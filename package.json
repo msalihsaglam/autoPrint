@@ -1,0 +1,26 @@
+{
+  "name": "plc-snap7-backend",
+  "version": "1.0.0",
+  "description": "S7-1200 PLC veri okuma sistemi - snap7 kullanarak",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "plc",
+    "snap7",
+    "siemens",
+    "s7-1200"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "snap7": "^1.4.3",
+    "dotenv": "^16.0.3"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.20"
+  }
+}
