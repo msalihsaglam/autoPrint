@@ -1,9 +1,16 @@
 const config = require('./config');
+const snap7 = require('snap7');
 
 class TagReader {
   constructor(plcConnection) {
     this.connection = plcConnection;
     this.client = plcConnection.getClient();
+    
+    // Snap7 Constants
+    this.S7_AREA_MEMORY = snap7.S7AreaMK;   // Memory area (%M)
+    this.S7_AREA_INPUT = snap7.S7AreaPE;   // Input area (%I)
+    this.S7_AREA_OUTPUT = snap7.S7AreaPA;  // Output area (%Q)
+    this.S7_WL_BYTE = snap7.S7WLByte;      // Word length: byte
   }
 
   /**
@@ -270,6 +277,128 @@ class TagReader {
       console.error('Birden fazla tag okuma hatası:', error.message);
       throw error;
     }
+  }
+
+  /**
+   * Memory alanından REAL oku (%MD)
+   * @param {number} offset - Byte kaydırması
+   * @returns {Promise<number>}
+   */
+  async readMemoryReal(offset) {
+    try {
+      await this.connection.ensureConnected();
+      
+      const buffer = Buffer.alloc(4);
+      const result = this.client.ReadArea(this.S7_AREA_MEMORY, 0, offset, 4, this.S7_WL_BYTE, buffer);
+      
+      if (result === 0) {
+        return buffer.readFloatBE(0);
+      } else {
+        throw new Error(`Memory okuma hatası (Kod: ${result})`);
+      }
+    } catch (error) {
+      console.error(`Memory REAL okuma hatası [%MD${offset}]:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Input alanından REAL oku (%ID)
+   * @param {number} offset - Byte kaydırması
+   * @returns {Promise<number>}
+   */
+  async readInputReal(offset) {
+    try {
+      await this.connection.ensureConnected();
+      
+      const buffer = Buffer.alloc(4);
+      const result = this.client.ReadArea(this.S7_AREA_INPUT, 0, offset, 4, this.S7_WL_BYTE, buffer);
+      
+      if (result === 0) {
+        return buffer.readFloatBE(0);
+      } else {
+        throw new Error(`Input okuma hatası (Kod: ${result})`);
+      }
+    } catch (error) {
+      console.error(`Input REAL okuma hatası [%ID${offset}]:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Yapılandırılmış tag'ı oku (tags.js tarafından tanımlanan yapı)
+   * @param {Object} tag - Tag tanımı {type, area, offset}
+   * @returns {Promise<{value, timestamp, unit}>}
+   */
+  async readConfiguredTag(tag) {
+    try {
+      await this.connection.ensureConnected();
+      
+      let value;
+      const tagInfo = `[${tag.name}]`;
+
+      if (tag.area === 'memory') {
+        switch (tag.type.toLowerCase()) {
+          case 'real':
+            value = await this.readMemoryReal(tag.offset);
+            break;
+          case 'int':
+            value = await this.readMemoryInt(tag.offset);
+            break;
+          default:
+            throw new Error(`Desteklenmeyen tip: ${tag.type}`);
+        }
+      } else if (tag.area === 'input') {
+        switch (tag.type.toLowerCase()) {
+          case 'real':
+            value = await this.readInputReal(tag.offset);
+            break;
+          case 'int':
+            value = await this.readInputInt(tag.offset);
+            break;
+          default:
+            throw new Error(`Desteklenmeyen tip: ${tag.type}`);
+        }
+      } else {
+        throw new Error(`Desteklenmeyen alan: ${tag.area}`);
+      }
+
+      return {
+        id: tag.id,
+        name: tag.name,
+        value: value,
+        unit: tag.unit,
+        timestamp: new Date().toISOString(),
+        success: true
+      };
+    } catch (error) {
+      console.error(`Tag okuma hatası [${tag.name}]:`, error.message);
+      return {
+        id: tag.id,
+        name: tag.name,
+        value: null,
+        unit: tag.unit,
+        timestamp: new Date().toISOString(),
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Birden fazla yapılandırılmış tag'ı oku
+   * @param {Array} tags - Tag listesi
+   * @returns {Promise<Array>}
+   */
+  async readConfiguredTags(tags) {
+    const results = [];
+    
+    for (const tag of tags) {
+      const result = await this.readConfiguredTag(tag);
+      results.push(result);
+    }
+    
+    return results;
   }
 }
 

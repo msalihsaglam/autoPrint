@@ -1,12 +1,30 @@
 const PLCConnection = require('./plcConnection');
 const TagReader = require('./tagReader');
+const Scheduler = require('./scheduler');
+const { getAllTags, printTagInfo } = require('./tags');
 const config = require('./config');
+
+// ============================================================================
+// OKUMA CYCLE AYARLARI
+// ============================================================================
+// Arayüzden verilecek cycle türleri ve zamanları
+const READING_CYCLES = {
+  // Periyodik okuma (ms cinsinden interval)
+  EVERY_3_HOURS: 3 * 60 * 60 * 1000,      // 3 saat
+  EVERY_6_HOURS: 6 * 60 * 60 * 1000,      // 6 saat
+  EVERY_24_HOURS: 24 * 60 * 60 * 1000,    // 24 saat (günde bir kere)
+  EVERY_HOUR: 60 * 60 * 1000,             // 1 saat
+  EVERY_30_MINUTES: 30 * 60 * 1000,       // 30 dakika
+  EVERY_MINUTE: 60 * 1000,                // 1 dakika (test için)
+};
 
 class PLCSystem {
   constructor() {
     this.connection = new PLCConnection();
     this.tagReader = new TagReader(this.connection);
+    this.scheduler = new Scheduler(this.tagReader);
     this.isRunning = false;
+    this.readingData = [];
   }
 
   /**
@@ -23,8 +41,11 @@ class PLCSystem {
       await this.connection.connect();
       this.isRunning = true;
 
-      // Örnek: Tag okuma
-      await this.demonstrateTagReading();
+      // Tag bilgilerini göster
+      printTagInfo();
+
+      // Okuma görevlerini başlat
+      await this.setupReadingTasks();
 
     } catch (error) {
       console.error('❌ Hata:', error.message);
@@ -33,53 +54,123 @@ class PLCSystem {
   }
 
   /**
-   * Tag okuma örnekleri
+   * Tag okuma görevlerini ayarla
    */
-  async demonstrateTagReading() {
+  async setupReadingTasks() {
+    console.log('\n⏰ OKUMA GÖREVLERİ AYARLANIYÖR:\n');
+
+    // GÖREV 1: Günde bir kere (24 saat interval)
+    this.scheduler.addPeriodicTask(
+      'daily-reading',
+      () => this.performTagReading('Günlük'),
+      READING_CYCLES.EVERY_24_HOURS
+    );
+
+    // GÖREV 2: 3 saatte bir
+    this.scheduler.addPeriodicTask(
+      'every-3-hours-reading',
+      () => this.performTagReading('3 Saatlik'),
+      READING_CYCLES.EVERY_3_HOURS
+    );
+
+    // GÖREV 3: Saat 14:00'te günlük okuma
+    this.scheduler.addDailyTask(
+      'daily-at-14-00',
+      '14:00',
+      () => this.performTagReading('14:00 Günlük')
+    );
+
+    // TEST: Her 1 dakikada bir (test amacı ile)
+    // Comment out et üretimde
+    // this.scheduler.addPeriodicTask(
+    //   'test-every-minute',
+    //   () => this.performTagReading('Test (1 Dakika)'),
+    //   READING_CYCLES.EVERY_MINUTE
+    // );
+
+    console.log('\n✓ Okuma görevleri başarıyla ayarlandı\n');
+    
+    // Aktif görevleri listele
+    this.scheduler.listTasks();
+
+    // İlk okumayı hemen yap
+    console.log('\n🔄 İlk okuma gerçekleştiriliyor...\n');
+    await this.performTagReading('İlk Okuma');
+  }
+
+  /**
+   * Tag okuma işlemi
+   */
+  async performTagReading(readingType = 'Düzenli') {
+    const startTime = Date.now();
+    
     try {
-      console.log('📖 Tag Okuma Örnekleri:\n');
+      console.log(`\n📖 Tag Okuma Başladı [${readingType}] - ${new Date().toLocaleTimeString('tr-TR')}`);
+      console.log('─'.repeat(60));
 
-      // Örnek 1: Tekil tag okuma
-      console.log('1️⃣  Tekil Tag Okuma:');
-      try {
-        // DB1'den offset 0'dan INT oku
-        const value = await this.tagReader.readInt(1, 0);
-        console.log(`   DB1:DBW0 = ${value}`);
-      } catch (error) {
-        console.log(`   ⚠️  Örnek tag okuma başarısız: ${error.message}`);
-      }
+      // Tüm tag'ları oku
+      const tags = getAllTags();
+      const results = await this.tagReader.readConfiguredTags(tags);
 
-      // Örnek 2: Birden fazla tag okuma
-      console.log('\n2️⃣  Birden Fazla Tag Okuma:');
-      try {
-        const tags = [
-          { type: 'int', db: 1, offset: 0, name: 'Sıcaklık' },
-          { type: 'real', db: 1, offset: 10, name: 'Basınç' },
-          { type: 'dint', db: 1, offset: 20, name: 'Sayaç' },
-          { type: 'bool', db: 1, offset: 30, bit: 0, name: 'Başlat' },
-        ];
+      // Sonuçları işle
+      const readingRecord = {
+        timestamp: new Date().toISOString(),
+        readingType: readingType,
+        duration: Date.now() - startTime,
+        tags: results,
+        successCount: results.filter(r => r.success).length,
+        failureCount: results.filter(r => !r.success).length
+      };
 
-        const results = await this.tagReader.readMultipleTags(tags);
-        results.forEach(result => {
-          console.log(`   ${result.name}: ${result.value}`);
-        });
-      } catch (error) {
-        console.log(`   ⚠️  Çoklu tag okuma başarısız: ${error.message}`);
-      }
+      // Verileri sakla (ilerde DB'ye yazılacak)
+      this.readingData.push(readingRecord);
 
-      // Örnek 3: Belirtilen aralıkta veri okuma
-      console.log('\n3️⃣  Raw Veri Okuma (10 bayt):');
-      try {
-        const buffer = await this.tagReader.readBytes(1, 0, 10);
-        console.log(`   Hex: ${buffer.toString('hex')}`);
-        console.log(`   Raw Data: ${JSON.stringify(Array.from(buffer))}`);
-      } catch (error) {
-        console.log(`   ⚠️  Raw veri okuma başarısız: ${error.message}`);
-      }
+      // Sonuçları göster
+      console.log('\n📊 Okuma Sonuçları:');
+      console.log('─'.repeat(60));
+      
+      results.forEach((result) => {
+        if (result.success) {
+          console.log(`✓ ${result.name.padEnd(25)} : ${String(result.value).padEnd(12)} ${result.unit}`);
+        } else {
+          console.log(`✗ ${result.name.padEnd(25)} : HATA - ${result.error}`);
+        }
+      });
+
+      console.log('─'.repeat(60));
+      console.log(`\nÖzet:`);
+      console.log(`  Başarılı: ${readingRecord.successCount}/${results.length}`);
+      console.log(`  Başarısız: ${readingRecord.failureCount}/${results.length}`);
+      console.log(`  Süre: ${readingRecord.duration}ms`);
+      console.log(`  İşlem ID: ${readingRecord.timestamp}`);
+
+      return readingRecord;
 
     } catch (error) {
-      console.error('Örnek çalıştırma hatası:', error.message);
+      console.error(`❌ Okuma hatası [${readingType}]:`, error.message);
     }
+  }
+
+  /**
+   * Okunan verileri getir
+   */
+  getReadingData() {
+    return this.readingData;
+  }
+
+  /**
+   * Okunan verileri temizle
+   */
+  clearReadingData() {
+    this.readingData = [];
+    console.log('✓ Okunan veriler temizlendi');
+  }
+
+  /**
+   * Belirli okuma türünün verilerini getir
+   */
+  getReadingsByType(readingType) {
+    return this.readingData.filter(r => r.readingType === readingType);
   }
 
   /**
@@ -87,6 +178,7 @@ class PLCSystem {
    */
   stop() {
     if (this.isRunning) {
+      this.scheduler.clearAll();
       this.connection.disconnect();
       this.isRunning = false;
       console.log('🛑 Sistem durduruldu');
