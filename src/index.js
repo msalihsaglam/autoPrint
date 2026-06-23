@@ -4,7 +4,8 @@ const Scheduler = require('./scheduler');
 const APIServer = require('./apiServer');
 const { getAllTags, getMainTags, getControlTag, printTagInfo } = require('./tags');
 const config = require('./config');
-const { initializePool, testConnection, logSystemEvent, saveTagReadings } = require('./database');
+const database = require('./database');
+const { initializePool, testConnection, logSystemEvent, saveTagReadings } = database;
 
 // ============================================================================
 // OKUMA KONTROL AYARLARI
@@ -20,6 +21,7 @@ class PLCSystem {
     this.tagReader = new TagReader(this.connection);
     this.scheduler = new Scheduler(this.tagReader);
     this.apiServer = null;
+    this.database = database;
     
     this.isRunning = false;
     this.readingData = [];
@@ -62,8 +64,8 @@ class PLCSystem {
       // Tag bilgilerini göster
       printTagInfo();
 
-      // Okuma görevlerini başlat
-      await this.setupReadingTasks();
+      // Okuma görevlerini başlat (örnek veri yazması için devre dışı)
+      // await this.setupReadingTasks();
 
       // API sunucusunu başlat
       this.startAPIServer();

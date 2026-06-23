@@ -16,7 +16,9 @@
 
 .auto-refresh {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--spacing-xs);
 }
 
 .auto-refresh label {
@@ -31,6 +33,11 @@
 .auto-refresh input[type='checkbox'] {
   width: auto;
   cursor: pointer;
+}
+
+.auto-refresh small {
+  font-size: 11px;
+  color: var(--color-text-secondary);
 }
 
 /* Reading Info */
@@ -210,21 +217,58 @@
 }
 
 .no-data p:first-child {
-  font-size: 18px;
-  font-weight: 600;
-  margin-bottom: var(--spacing-md);
-}
-
 /* Trend Section */
 .trend-section {
   margin-bottom: var(--spacing-2xl);
 }
 
-.trend-placeholder {
+.trend-section h2 {
+  margin-bottom: var(--spacing-lg);
+}
+
+.trend-section p {
+  margin-bottom: var(--spacing-lg);
+}
+
+/* Individual Trends Grid */
+.trends-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
   gap: var(--spacing-lg);
-  margin-top: var(--spacing-lg);
+  margin-top: var(--spacing-2xl);
+}
+
+.individual-trend {
+  background: white;
+}
+
+.individual-trend h3 {
+  margin-bottom: var(--spacing-lg);
+  font-size: 16px;
+  color: var(--color-primary);
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .trends-grid {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .trends-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+  }
+
+  .auto-refresh {
+    align-items: flex-start;
+  }
 }
 
 .chart-skeleton {

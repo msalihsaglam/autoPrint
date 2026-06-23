@@ -130,26 +130,29 @@ class APIServer {
 
     /**
      * GET /api/reading/all
-     * Tüm okuma verilerini döndür (sayfa numarası ile)
-     * Query: ?page=1&limit=10
+     * Tüm okuma verilerini database'den döndür
+     * Query: ?limit=100 (default), ?tagId=TANK_SICAKLIGI (opsiyonel filtre)
      */
-    this.app.get('/api/reading/all', (req, res) => {
+    this.app.get('/api/reading/all', async (req, res) => {
       try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
+        const limit = parseInt(req.query.limit) || 100;
+        const tagId = req.query.tagId || null;
 
-        const readingData = this.plcSystem.getReadingData?.() || [];
-        const start = (page - 1) * limit;
-        const end = start + limit;
+        let readings = [];
 
-        const paginated = readingData.slice(start, end).reverse();
+        if (tagId) {
+          // Belirli tag'ın verilerini getir
+          readings = await this.plcSystem.database.getReadingsByTag(tagId, limit);
+        } else {
+          // Tüm son okumalar
+          readings = await this.plcSystem.database.getLatestReadings(limit);
+        }
 
         res.json({
-          data: paginated,
-          total: readingData.length,
-          page,
+          data: readings,
+          count: readings.length,
           limit,
-          pages: Math.ceil(readingData.length / limit)
+          tagId: tagId || 'all'
         });
       } catch (error) {
         res.status(500).json({ error: error.message });
@@ -198,6 +201,9 @@ class APIServer {
   }
 
   start() {
+    this.setupMiddleware();
+    this.setupRoutes();
+    
     this.app.listen(this.port, () => {
       console.log(`\n✓ API Sunucusu başlatıldı: http://localhost:${this.port}`);
       console.log(`  📡 Endpoint'ler:`);

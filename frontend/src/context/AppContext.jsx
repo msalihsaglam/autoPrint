@@ -63,7 +63,18 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
-  // Otomatik status güncelleme (10 saniyede bir)
+  // Trend verilerini getir (son N okumayı al)
+  const getTrendData = useCallback(async (limit = 100) => {
+    try {
+      const response = await axios.get(`${API_URL}/reading/all?limit=${limit}`);
+      return response.data.data || [];
+    } catch (err) {
+      console.error('Trend verileri alınamadı:', err);
+      return [];
+    }
+  }, []);
+
+  // Otomatik status güncelleme (dakikada bir)
   useEffect(() => {
     loadTags();
     getSystemStatus();
@@ -72,7 +83,7 @@ export const AppProvider = ({ children }) => {
     const statusInterval = setInterval(() => {
       getSystemStatus();
       getLastReadingData();
-    }, 10000); // 10 saniye
+    }, 60000); // 60 saniye (dakikada bir)
 
     return () => clearInterval(statusInterval);
   }, []);
@@ -88,6 +99,7 @@ export const AppProvider = ({ children }) => {
     // Methods
     loadTags,
     getLastReadingData,
+    getTrendData,
     getSystemStatus,
     setError,
   };

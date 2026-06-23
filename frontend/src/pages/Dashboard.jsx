@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import TrendChart from '../components/TrendChart';
 import './Dashboard.css';
 
 export const Dashboard = () => {
   const { lastReading, loading, error, getLastReadingData } = useApp();
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [autoRefresh, setAutoRefresh] = useState(false); // Otomatik yenileme kapalı (sistem dakikada bir günceller)
 
   useEffect(() => {
     // İlk yükleme
     getLastReadingData();
 
-    // Auto-refresh
+    // Auto-refresh - sadece seçiliyse
     let interval;
     if (autoRefresh) {
       interval = setInterval(() => {
@@ -41,6 +42,7 @@ export const Dashboard = () => {
               />
               Otomatik Yenile (5s)
             </label>
+            <small>💡 Sistem dakikada bir otomatik günceller</small>
           </div>
         </div>
 
@@ -111,18 +113,26 @@ export const Dashboard = () => {
           </div>
         )}
 
-        {/* Trend Bölümü (İlerde Doldurulacak) */}
+        {/* Trend Bölümü - Tüm Tag'lar */}
         <div className="card trend-section">
           <h2>📈 Trendler</h2>
-          <p className="text-secondary">
-            💡 Bu bölüm ilerde veritabanından tarihsel verileri kullanarak grafik gösterecek
-          </p>
-          <div className="trend-placeholder">
-            <div className="chart-skeleton"></div>
-            <div className="chart-skeleton"></div>
-            <div className="chart-skeleton"></div>
-          </div>
+          <p className="text-secondary">Son 100 okuma verisinin grafikleri</p>
+          <TrendChart />
         </div>
+
+        {/* Bireysel Tag Trendleri */}
+        {lastReading && lastReading.tags && (
+          <div className="trends-grid">
+            {lastReading.tags.map((tag) => (
+              tag.success && (
+                <div key={tag.id} className="card individual-trend">
+                  <h3>{tag.name}</h3>
+                  <TrendChart tagId={tag.id} />
+                </div>
+              )
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
