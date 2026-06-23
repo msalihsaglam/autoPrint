@@ -2,22 +2,16 @@ const PLCConnection = require('./plcConnection');
 const TagReader = require('./tagReader');
 const Scheduler = require('./scheduler');
 const APIServer = require('./apiServer');
-const { getAllTags, printTagInfo } = require('./tags');
+const { getAllTags, getMainTags, getControlTag, printTagInfo } = require('./tags');
 const config = require('./config');
-const { initializePool, testConnection, logSystemEvent } = require('./database');
+const { initializePool, testConnection, logSystemEvent, saveTagReadings } = require('./database');
 
 // ============================================================================
-// OKUMA CYCLE AYARLARI
+// OKUMA KONTROL AYARLARI
 // ============================================================================
-// Arayüzden verilecek cycle türleri ve zamanları
-const READING_CYCLES = {
-  // Periyodik okuma (ms cinsinden interval)
-  EVERY_3_HOURS: 3 * 60 * 60 * 1000,      // 3 saat
-  EVERY_6_HOURS: 6 * 60 * 60 * 1000,      // 6 saat
-  EVERY_24_HOURS: 24 * 60 * 60 * 1000,    // 24 saat (günde bir kere)
-  EVERY_HOUR: 60 * 60 * 1000,             // 1 saat
-  EVERY_30_MINUTES: 30 * 60 * 1000,       // 30 dakika
-  EVERY_MINUTE: 60 * 1000,                // 1 dakika (test için)
+const READING_INTERVALS = {
+  START_MEM_CHECK: 20 * 1000,       // Start_MEM tag'ını 20 saniyede bir oku
+  MAIN_TAGS_READ: 60 * 1000,        // Main tags'ı (Start_MEM true iken) 1 dakikada bir oku
 };
 
 class PLCSystem {
@@ -30,9 +24,10 @@ class PLCSystem {
     this.isRunning = false;
     this.readingData = [];
     
-    // Sistem ayarları
-    this.mode = 'manual';           // 'manual' | 'auto'
-    this.cycle = 'EVERY_24_HOURS';  // Aktif cycle
+    // Sistem durumu
+    this.startMemState = false;        // Son okunan Start_MEM durumu
+    this.isMainReadingActive = false;  // Ana tag okuma durumu
+    this.mainReadingIntervalId = null; // Main tags okuma interval ID
   }
 
   /**
@@ -93,59 +88,110 @@ class PLCSystem {
   async setupReadingTasks() {
     console.log('\n⏰ OKUMA GÖREVLERİ AYARLANIYÖR:\n');
 
-    // GÖREV 1: Günde bir kere (24 saat interval)
+    // GÖREV 1: Start_MEM tag'ını 20 saniyede bir kontrol et
     this.scheduler.addPeriodicTask(
-      'daily-reading',
-      () => this.performTagReading('Günlük'),
-      READING_CYCLES.EVERY_24_HOURS
+      'start-mem-monitor',
+      () => this.checkStartMemTag(),
+      READING_INTERVALS.START_MEM_CHECK
     );
 
-    // GÖREV 2: 3 saatte bir
-    this.scheduler.addPeriodicTask(
-      'every-3-hours-reading',
-      () => this.performTagReading('3 Saatlik'),
-      READING_CYCLES.EVERY_3_HOURS
-    );
-
-    // GÖREV 3: Saat 14:00'te günlük okuma
-    this.scheduler.addDailyTask(
-      'daily-at-14-00',
-      '14:00',
-      () => this.performTagReading('14:00 Günlük')
-    );
-
-    // TEST: Her 1 dakikada bir (test amacı ile)
-    // Comment out et üretimde
-    // this.scheduler.addPeriodicTask(
-    //   'test-every-minute',
-    //   () => this.performTagReading('Test (1 Dakika)'),
-    //   READING_CYCLES.EVERY_MINUTE
-    // );
-
-    console.log('\n✓ Okuma görevleri başarıyla ayarlandı\n');
-    
-    // Aktif görevleri listele
-    this.scheduler.listTasks();
-
-    // İlk okumayı hemen yap
-    console.log('\n🔄 İlk okuma gerçekleştiriliyor...\n');
-    await this.performTagReading('İlk Okuma');
+    console.log('\n✓ Okuma görevleri başarıyla ayarlandı');
+    console.log('   - Start_MEM tag\'ı 20 saniyede bir kontrol edilecek');
+    console.log('   - TRUE olduğunda: Main tags 1 dakikada bir okunacak');
+    console.log('   - FALSE olduğunda: Okuma durdurulacak\n');
   }
 
   /**
-   * Tag okuma işlemi
+   * Start_MEM tag'ını kontrol et ve ana okuma işlemini başlat/durdur
    */
-  async performTagReading(readingType = 'Düzenli') {
+  async checkStartMemTag() {
+    try {
+      const controlTag = getControlTag();
+      
+      // Mock data: Start_MEM tag'ını oku
+      const result = {
+        id: controlTag.id,
+        name: controlTag.name,
+        value: Math.random() > 0.5, // Mock boolean value
+        type: controlTag.type,
+        timestamp: new Date().toISOString(),
+        success: true
+      };
+
+      console.log(`\n⚙️  Start_MEM Kontrol [${new Date().toLocaleTimeString('tr-TR')}]: ${result.value ? '✓ TRUE' : '✗ FALSE'}`);
+
+      // Durum değişti mi?
+      if (result.value && !this.startMemState) {
+        // FALSE -> TRUE: Ana okumayı başlat
+        console.log('🟢 Start_MEM TRUE oldu - Ana tag okuma başlıyor...');
+        this.startMainReading();
+      } else if (!result.value && this.startMemState) {
+        // TRUE -> FALSE: Ana okumayı durdur
+        console.log('🔴 Start_MEM FALSE oldu - Ana tag okuma durduruldu');
+        this.stopMainReading();
+      }
+
+      // Durumu güncelle
+      this.startMemState = result.value;
+    } catch (error) {
+      console.error('❌ Start_MEM kontrol hatası:', error.message);
+    }
+  }
+
+  /**
+   * Ana tag okuma işlemini başlat
+   */
+  startMainReading() {
+    if (this.isMainReadingActive) {
+      console.log('ℹ️  Ana okuma zaten aktif');
+      return;
+    }
+
+    console.log('🟢 Main tags okuma başlatılıyor...');
+    this.isMainReadingActive = true;
+
+    // Hemen ilk okumayı yap
+    this.performMainTagsReading('İlk Okuma (Start_MEM TRUE)');
+
+    // Sonra 1 dakikada bir tekrarla
+    this.mainReadingIntervalId = setInterval(() => {
+      if (this.isMainReadingActive) {
+        this.performMainTagsReading('Periyodik Okuma (Start_MEM TRUE)');
+      }
+    }, READING_INTERVALS.MAIN_TAGS_READ);
+  }
+
+  /**
+   * Ana tag okuma işlemini durdur
+   */
+  stopMainReading() {
+    if (!this.isMainReadingActive) {
+      console.log('ℹ️  Ana okuma zaten durmuş');
+      return;
+    }
+
+    console.log('🔴 Main tags okuma durdurulıyor...');
+    this.isMainReadingActive = false;
+
+    if (this.mainReadingIntervalId) {
+      clearInterval(this.mainReadingIntervalId);
+      this.mainReadingIntervalId = null;
+    }
+  }
+
+  /**
+   * Ana tag'ları oku ve database'ye kaydet
+   */
+  async performMainTagsReading(readingType = 'Düzenli') {
     const startTime = Date.now();
-    const { saveTagReadings } = require('./database');
     
     try {
-      console.log(`\n📖 Tag Okuma Başladı [${readingType}] - ${new Date().toLocaleTimeString('tr-TR')}`);
+      console.log(`\n📖 Ana Tag Okuma Başladı [${readingType}] - ${new Date().toLocaleTimeString('tr-TR')}`);
       console.log('─'.repeat(60));
 
-      // Tüm tag'ları oku
-      const tags = getAllTags();
-      const results = await this.tagReader.readConfiguredTags(tags);
+      // Ana 5 tag'ı oku
+      const mainTags = getMainTags();
+      const results = await this.tagReader.readConfiguredTags(mainTags);
 
       // Sonuçları işle
       const readingRecord = {
@@ -188,7 +234,7 @@ class PLCSystem {
       return readingRecord;
 
     } catch (error) {
-      console.error(`❌ Okuma hatası [${readingType}]:`, error.message);
+      console.error(`❌ Ana tag okuma hatası [${readingType}]:`, error.message);
     }
   }
 
@@ -219,6 +265,11 @@ class PLCSystem {
    */
   async stop() {
     if (this.isRunning) {
+      // Main reading interval'ı durdur
+      if (this.mainReadingIntervalId) {
+        clearInterval(this.mainReadingIntervalId);
+      }
+      
       this.scheduler.clearAll();
       this.connection.disconnect();
       this.isRunning = false;

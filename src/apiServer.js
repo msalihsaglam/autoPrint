@@ -44,15 +44,19 @@ class APIServer {
 
     /**
      * GET /api/system/status
-     * Sistem durumunu döndür (mod, aktif cycle, vb.)
+     * Sistem durumunu döndür (Start_MEM durumu, okuma aktif/durmuş, vb.)
      */
     this.app.get('/api/system/status', (req, res) => {
       try {
         res.json({
-          mode: this.plcSystem.mode || 'manual',
-          cycle: this.plcSystem.cycle || 'EVERY_24_HOURS',
           isRunning: this.plcSystem.isRunning || false,
-          timestamp: new Date().toISOString()
+          startMemState: this.plcSystem.startMemState || false,
+          isMainReadingActive: this.plcSystem.isMainReadingActive || false,
+          timestamp: new Date().toISOString(),
+          description: {
+            startMemState: 'Start_MEM tag durumu (TRUE/FALSE)',
+            isMainReadingActive: 'Ana 5 tag okuma durumu'
+          }
         });
       } catch (error) {
         res.status(500).json({ error: error.message });
@@ -61,62 +65,24 @@ class APIServer {
 
     /**
      * POST /api/system/mode
-     * Sistem modunu değiştir (otomatik/manuel)
-     * Body: { mode: 'auto' | 'manual' }
+     * DEPRECATED - Sistem Start_MEM tag'ı ile kontrol edilir
      */
     this.app.post('/api/system/mode', async (req, res) => {
-      try {
-        const { mode } = req.body;
-
-        if (!['auto', 'manual'].includes(mode)) {
-          return res.status(400).json({ error: 'Geçersiz mod: auto veya manual olmalı' });
-        }
-
-        this.plcSystem.mode = mode;
-        console.log(`✓ Sistem modu değiştirildi: ${mode}`);
-
-        res.json({
-          success: true,
-          mode: this.plcSystem.mode,
-          message: `Mod ${mode === 'auto' ? 'Otomatik' : 'Manuel'} olarak ayarlandı`
-        });
-      } catch (error) {
-        res.status(500).json({ error: error.message });
-      }
+      res.json({
+        deprecated: true,
+        message: 'Mode seçimi artık Start_MEM tag\'ı ile kontrol edilir'
+      });
     });
 
     /**
      * POST /api/system/cycle
-     * Okuma cycle'ını değiştir (otomatik mod için)
-     * Body: { cycle: 'EVERY_24_HOURS' | 'EVERY_3_HOURS' | ... }
+     * DEPRECATED - Sistem Start_MEM tag'ı True iken dakikada bir okur
      */
     this.app.post('/api/system/cycle', async (req, res) => {
-      try {
-        const { cycle } = req.body;
-
-        const validCycles = [
-          'EVERY_24_HOURS',
-          'EVERY_3_HOURS',
-          'EVERY_HOUR',
-          'EVERY_30_MINUTES',
-          'DAILY_AT_14_00'
-        ];
-
-        if (!validCycles.includes(cycle)) {
-          return res.status(400).json({ error: 'Geçersiz cycle' });
-        }
-
-        this.plcSystem.cycle = cycle;
-        console.log(`✓ Okuma cycle'ı değiştirildi: ${cycle}`);
-
-        res.json({
-          success: true,
-          cycle: this.plcSystem.cycle,
-          message: `Cycle ${cycle} olarak ayarlandı`
-        });
-      } catch (error) {
-        res.status(500).json({ error: error.message });
-      }
+      res.json({
+        deprecated: true,
+        message: 'Cycle seçimi artık kullanılmıyor. Start_MEM True iken 1 dakikada bir okuma yapılır'
+      });
     });
 
     // ========================================================================
@@ -125,20 +91,13 @@ class APIServer {
 
     /**
      * POST /api/reading/trigger
-     * Manuel trigger - Hemen tag'ları oku
+     * DEPRECATED - Sistem Start_MEM tag'ı ile kontrol edilir
      */
     this.app.post('/api/reading/trigger', async (req, res) => {
       try {
-        if (!this.plcSystem || !this.plcSystem.performTagReading) {
-          return res.status(500).json({ error: 'PLC Sistemi hazırlanmadı' });
-        }
-
-        const readingResult = await this.plcSystem.performTagReading('API Trigger');
-        
         res.json({
-          success: true,
-          data: readingResult,
-          message: 'Okuma başarıyla tamamlandı'
+          deprecated: true,
+          message: 'Manuel trigger kaldırıldı. Sistem Start_MEM tag\'ı ile kontrol edilir'
         });
       } catch (error) {
         res.status(500).json({ 

@@ -1,13 +1,16 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import axios from 'axios';
 
 const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
-  const [mode, setMode] = useState('manual'); // 'manual' | 'auto'
-  const [cycle, setCycle] = useState('EVERY_24_HOURS'); // Okuma cycle'ı
   const [tags, setTags] = useState([]); // Tag listesi
   const [lastReading, setLastReading] = useState(null); // Son okuma
+  const [systemStatus, setSystemStatus] = useState({ // Start_MEM durum
+    isRunning: false,
+    startMemState: false,
+    isMainReadingActive: false
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -19,7 +22,9 @@ export const AppProvider = ({ children }) => {
     try {
       setLoading(true);
       const response = await axios.get(`${API_URL}/tags`);
-      setTags(response.data);
+      // Filter out START_MEM control tag from display
+      const mainTags = response.data.filter(tag => tag.id !== 'START_MEM');
+      setTags(mainTags);
       setError(null);
     } catch (err) {
       setError(`Tag'lar yüklenemedi: ${err.message}`);
@@ -29,51 +34,16 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
-  // Sistem modu değiştir
-  const setSystemMode = useCallback(async (newMode) => {
+  // Sistem durumunu kontrol et
+  const getSystemStatus = useCallback(async () => {
     try {
-      setLoading(true);
-      const response = await axios.post(`${API_URL}/system/mode`, { mode: newMode });
-      setMode(newMode);
+      const response = await axios.get(`${API_URL}/system/status`);
+      setSystemStatus(response.data);
       setError(null);
       return response.data;
     } catch (err) {
-      setError(`Mod değiştirilemedi: ${err.message}`);
+      setError(`Sistem durumu alınamadı: ${err.message}`);
       console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Cycle değiştir (otomatik mod için)
-  const setReadingCycle = useCallback(async (newCycle) => {
-    try {
-      setLoading(true);
-      const response = await axios.post(`${API_URL}/system/cycle`, { cycle: newCycle });
-      setCycle(newCycle);
-      setError(null);
-      return response.data;
-    } catch (err) {
-      setError(`Cycle değiştirilemedi: ${err.message}`);
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Manuel trigger - anında tag oku
-  const triggerReading = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await axios.post(`${API_URL}/reading/trigger`);
-      setLastReading(response.data);
-      setError(null);
-      return response.data;
-    } catch (err) {
-      setError(`Okuma başarısız: ${err.message}`);
-      console.error(err);
-    } finally {
-      setLoading(false);
     }
   }, []);
 
@@ -93,29 +63,29 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
-  // Sistem durumunu getir
-  const getSystemStatus = useCallback(async () => {
-    try {
-      const response = await axios.get(`${API_URL}/system/status`);
-      return response.data;
-    } catch (err) {
-      console.error('Sistem durumu alınamadı:', err);
-    }
+  // Otomatik status güncelleme (10 saniyede bir)
+  useEffect(() => {
+    loadTags();
+    getSystemStatus();
+    getLastReadingData();
+
+    const statusInterval = setInterval(() => {
+      getSystemStatus();
+      getLastReadingData();
+    }, 10000); // 10 saniye
+
+    return () => clearInterval(statusInterval);
   }, []);
 
   const value = {
     // State
-    mode,
-    cycle,
     tags,
     lastReading,
+    systemStatus,
     loading,
     error,
 
     // Methods
-    setSystemMode,
-    setReadingCycle,
-    triggerReading,
     loadTags,
     getLastReadingData,
     getSystemStatus,

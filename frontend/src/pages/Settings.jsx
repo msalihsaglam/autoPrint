@@ -2,40 +2,33 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import './Settings.css';
 
-const CYCLE_OPTIONS = {
-  EVERY_24_HOURS: { label: 'Günde Bir Kere (24 saat)', value: 'EVERY_24_HOURS' },
-  EVERY_3_HOURS: { label: '3 Saatte Bir', value: 'EVERY_3_HOURS' },
-  EVERY_HOUR: { label: 'Saatlik (1 saat)', value: 'EVERY_HOUR' },
-  EVERY_30_MINUTES: { label: '30 Dakikada Bir', value: 'EVERY_30_MINUTES' },
-  DAILY_AT_14_00: { label: 'Her Gün 14:00\'te', value: 'DAILY_AT_14_00' },
-};
-
 export const Settings = () => {
-  const { mode, cycle, setSystemMode, setReadingCycle, triggerReading, loading, error } = useApp();
-  const [selectedMode, setSelectedMode] = useState(mode);
-  const [selectedCycle, setSelectedCycle] = useState(cycle);
-  const [triggerLoading, setTriggerLoading] = useState(false);
+  const { systemStatus, lastReading, loading, error } = useApp();
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   useEffect(() => {
-    setSelectedMode(mode);
-    setSelectedCycle(cycle);
-  }, [mode, cycle]);
+    setLastUpdated(new Date().toLocaleTimeString('tr-TR'));
+  }, [systemStatus]);
 
-  const handleModeChange = async (newMode) => {
-    setSelectedMode(newMode);
-    await setSystemMode(newMode);
+  const getReadingStatus = () => {
+    if (systemStatus.startMemState) {
+      return {
+        label: 'AKTIF ✓',
+        emoji: '🟢',
+        color: '#10b981',
+        detail: 'Ana tag okumalar devam ediyor'
+      };
+    } else {
+      return {
+        label: 'DURDU ✗',
+        emoji: '🔴',
+        color: '#ef4444',
+        detail: 'Ana tag okumalar durdurulmuş'
+      };
+    }
   };
 
-  const handleCycleChange = async (newCycle) => {
-    setSelectedCycle(newCycle);
-    await setReadingCycle(newCycle);
-  };
-
-  const handleTrigger = async () => {
-    setTriggerLoading(true);
-    await triggerReading();
-    setTriggerLoading(false);
-  };
+  const statusInfo = getReadingStatus();
 
   return (
     <div className="settings-page">
@@ -44,115 +37,136 @@ export const Settings = () => {
 
         {error && <div className="alert alert-error">{error}</div>}
 
-        {/* Mod Seçimi */}
-        <div className="card">
+        {/* Sistem Durumu Paneli */}
+        <div className="card status-card">
           <div className="card-header">
-            <h2>Çalışma Modu</h2>
-            <p className="card-subtitle">Sistemi otomatik veya manuel modda çalıştırabilirsiniz</p>
+            <h2>🔍 Sistem Durumu</h2>
+            <p className="card-subtitle">Okuma işleminin gerçek zamanlı durumu</p>
           </div>
           <div className="card-body">
-            <div className="mode-selector">
-              <button
-                className={`mode-btn ${selectedMode === 'auto' ? 'active' : ''}`}
-                onClick={() => handleModeChange('auto')}
-                disabled={loading}
-              >
-                <span className="mode-icon">🤖</span>
-                <span>Otomatik Mod</span>
-              </button>
-
-              <button
-                className={`mode-btn ${selectedMode === 'manual' ? 'active' : ''}`}
-                onClick={() => handleModeChange('manual')}
-                disabled={loading}
-              >
-                <span className="mode-icon">👆</span>
-                <span>Manuel Mod</span>
-              </button>
+            <div className="status-display" style={{ borderLeft: `4px solid ${statusInfo.color}` }}>
+              <div className="status-main">
+                <span className="status-emoji">{statusInfo.emoji}</span>
+                <div className="status-info">
+                  <h3>START_MEM Durumu</h3>
+                  <p className="status-value" style={{ color: statusInfo.color }}>
+                    {statusInfo.label}
+                  </p>
+                </div>
+              </div>
+              <p className="status-detail">{statusInfo.detail}</p>
             </div>
 
-            <p className="mode-description">
-              {selectedMode === 'auto'
-                ? '✓ Sistem otomatik olarak seçili cycle\'da veri okuyacak'
-                : '✓ Sistem manuel kontrolde olacak. Trigger butonu ile anlık veri okuyabilirsiniz'}
-            </p>
+            {/* Durumu Açıklaması */}
+            <div className="status-explanation">
+              <div className="explanation-item">
+                <span className="exp-icon">📌</span>
+                <div>
+                  <strong>START_MEM Etkin:</strong> {systemStatus.startMemState ? 'Evet' : 'Hayır'}
+                </div>
+              </div>
+              <div className="explanation-item">
+                <span className="exp-icon">📊</span>
+                <div>
+                  <strong>Ana Tag Okuma:</strong> {systemStatus.isMainReadingActive ? 'Çalışıyor' : 'Durmada'}
+                </div>
+              </div>
+              {lastReading && (
+                <div className="explanation-item">
+                  <span className="exp-icon">⏰</span>
+                  <div>
+                    <strong>Son Okuma:</strong> {new Date(lastReading.reading_timestamp).toLocaleTimeString('tr-TR')}
+                  </div>
+                </div>
+              )}
+              <div className="explanation-item">
+                <span className="exp-icon">🔄</span>
+                <div>
+                  <strong>Güncelleme:</strong> {lastUpdated}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Cycle Seçimi - Sadece Otomatik Modda */}
-        {selectedMode === 'auto' && (
-          <div className="card">
-            <div className="card-header">
-              <h2>Okuma Döngüsü (Cycle)</h2>
-              <p className="card-subtitle">Otomatik okumalar ne sıklıkta yapılacak?</p>
+        {/* Okuma Sistemi Açıklaması */}
+        <div className="card info-card">
+          <h3>📖 Okuma Sistemi Nasıl Çalışır?</h3>
+          <div className="info-content">
+            <div className="info-section">
+              <h4>🟢 START_MEM = TRUE (Aktif)</h4>
+              <ul>
+                <li>Ana tag okumalar hemen başlar</li>
+                <li>Sonra <strong>dakikada bir</strong> otomatik olarak tekrar okunur</li>
+                <li>Tank Sıcaklığı, Basınç, Sıvı Seviyesi, İletkenlik, WiFi Sıcaklığı okunur</li>
+              </ul>
             </div>
-            <div className="card-body">
-              <div className="cycle-selector">
-                {Object.entries(CYCLE_OPTIONS).map(([key, option]) => (
-                  <button
-                    key={key}
-                    className={`cycle-btn ${selectedCycle === option.value ? 'active' : ''}`}
-                    onClick={() => handleCycleChange(option.value)}
-                    disabled={loading}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+
+            <div className="info-section">
+              <h4>🔴 START_MEM = FALSE (Durdu)</h4>
+              <ul>
+                <li>Ana tag okumalar durdurulur</li>
+                <li>Mevcut değerler bellekte tutulur</li>
+                <li>START_MEM tekrar TRUE olana kadar yeni okuma yapılmaz</li>
+              </ul>
+            </div>
+
+            <div className="info-section">
+              <h4>⏱️ Kontrol Frekansı</h4>
+              <ul>
+                <li>START_MEM etiketi <strong>20 saniyede bir</strong> kontrol edilir</li>
+                <li>Etikette değişiklik tespit edilirse, okuma durdurulur veya başlatılır</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {/* Teknik Bilgiler */}
+        <div className="card tech-card">
+          <h3>⚡ Teknik Detaylar</h3>
+          <div className="tech-grid">
+            <div className="tech-item">
+              <span className="tech-label">API Endpoint</span>
+              <span className="tech-value">/api/system/status</span>
+            </div>
+            <div className="tech-item">
+              <span className="tech-label">Kontrol Etiketi</span>
+              <span className="tech-value">START_MEM (%M0.5)</span>
+            </div>
+            <div className="tech-item">
+              <span className="tech-label">Okuma Aralığı</span>
+              <span className="tech-value">60 saniye</span>
+            </div>
+            <div className="tech-item">
+              <span className="tech-label">Kontrol Frekansı</span>
+              <span className="tech-value">20 saniye</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Son Okuma İstatistikleri */}
+        {lastReading && (
+          <div className="card stats-card">
+            <h3>📈 Son Okuma İstatistikleri</h3>
+            <div className="stats-grid">
+              <div className="stat-item">
+                <span className="stat-label">Başarılı Tag</span>
+                <span className="stat-value" style={{ color: '#10b981' }}>
+                  {lastReading.reading_timestamp ? '✓' : '✗'}
+                </span>
+              </div>
+              <div className="stat-item">
+                <span className="stat-label">Zaman Damgası</span>
+                <span className="stat-value">
+                  {new Date(lastReading.reading_timestamp).toLocaleString('tr-TR')}
+                </span>
               </div>
             </div>
           </div>
         )}
-
-        {/* Manuel Trigger - Sadece Manuel Modda */}
-        {selectedMode === 'manual' && (
-          <div className="card">
-            <div className="card-header">
-              <h2>Anlık Okuma</h2>
-              <p className="card-subtitle">Tag değerlerini hemen almak için trigger et</p>
-            </div>
-            <div className="card-body manual-trigger">
-              <p>Aşağıdaki butona tıklayarak tüm tag'ların anlık değerlerini okuyabilirsiniz.</p>
-
-              <button
-                className="btn-primary btn-lg"
-                onClick={handleTrigger}
-                disabled={triggerLoading}
-              >
-                {triggerLoading ? (
-                  <>
-                    <span className="spinner"></span>
-                    Okunuyor...
-                  </>
-                ) : (
-                  <>
-                    ▶ Trigger - Şimdi Oku
-                  </>
-                )}
-              </button>
-
-              <p className="trigger-note">
-                💡 Okuma başlatılacak ve sonuçlar Dashboard'da gösterilecek
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Bilgi Paneli */}
-        <div className="card info-card">
-          <h3>📖 Bilgi</h3>
-          <ul>
-            <li>
-              <strong>Otomatik Mod:</strong> Seçili cycle'da sistem otomatik olarak veri okur
-            </li>
-            <li>
-              <strong>Manuel Mod:</strong> Trigger butonu ile istediğiniz zaman veri okuyabilirsiniz
-            </li>
-            <li>
-              <strong>Okuma Verileri:</strong> Dashboard'dan tüm tag'ların anlık veya son değerlerini görebilirsiniz
-            </li>
-          </ul>
-        </div>
       </div>
     </div>
   );
 };
+
+export default Settings;

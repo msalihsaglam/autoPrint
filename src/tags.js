@@ -64,6 +64,19 @@ const TAGS = {
     offset: 38,
     unit: '°C',
     description: 'Dış ortamın WiFi sensöründen ölçülen sıcaklığı'
+  },
+
+  // Control: Ana Okuma Başlangıcı - BOOL (1 bit)
+  // %M0.5 = Memory, byte 0, bit 5 (bool)
+  START_MEM: {
+    id: 'START_MEM',
+    name: 'Okuma Başlangıcı',
+    type: 'bool',
+    area: 'memory',
+    offset: 0,
+    bitOffset: 5,
+    unit: '-',
+    description: 'TRUE: Ana tag okumasını başla, FALSE: Dur. Dakikada 1 kez okunur + ilk okuma hemen'
   }
 };
 
@@ -72,6 +85,20 @@ const TAGS = {
  */
 function getAllTags() {
   return Object.values(TAGS);
+}
+
+/**
+ * Ana 5 tag'ı (kontrol tag'ı hariç) döndür
+ */
+function getMainTags() {
+  return Object.values(TAGS).filter(tag => tag.id !== 'START_MEM');
+}
+
+/**
+ * Control tag'ını döndür
+ */
+function getControlTag() {
+  return TAGS.START_MEM;
 }
 
 /**
@@ -101,6 +128,8 @@ function printTagInfo() {
 module.exports = {
   TAGS,
   getAllTags,
+  getMainTags,
+  getControlTag,
   getTag,
   printTagInfo
 };
