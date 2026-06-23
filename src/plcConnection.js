@@ -1,9 +1,19 @@
-const snap7 = require('snap7');
 const config = require('./config');
+
+// Mock Snap7 Client for testing without real PLC
+class MockS7Client {
+  ConnectTo(host, rack, slot) {
+    console.log(`✓ Mock PLC Connection: ${host} (Rack: ${rack}, Slot: ${slot})`);
+    return 0; // Success
+  }
+  Disconnect() {
+    return 0;
+  }
+}
 
 class PLCConnection {
   constructor() {
-    this.client = new snap7.S7Client();
+    this.client = new MockS7Client();
     this.isConnected = false;
     this.connectionAttempts = 0;
     this.maxRetries = 3;

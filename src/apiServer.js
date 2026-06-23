@@ -7,6 +7,7 @@ class APIServer {
     this.app = express();
     this.plcSystem = plcSystem;
     this.port = process.env.API_PORT || 3001;
+  }
 
   setupMiddleware() {
     this.app.use(cors());

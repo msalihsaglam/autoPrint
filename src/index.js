@@ -4,6 +4,7 @@ const Scheduler = require('./scheduler');
 const APIServer = require('./apiServer');
 const { getAllTags, printTagInfo } = require('./tags');
 const config = require('./config');
+const { initializePool, testConnection, logSystemEvent } = require('./database');
 
 // ============================================================================
 // OKUMA CYCLE AYARLARI
@@ -42,6 +43,21 @@ class PLCSystem {
       console.log('🚀 PLC Veri Okuma Sistemi başlatılıyor...');
       console.log(`   Host: ${config.plc.host}`);
       console.log(`   Rack: ${config.plc.rack}, Slot: ${config.plc.slot}`);
+      console.log('');
+
+      // Database pool'ı başlat
+      initializePool();
+      const dbConnected = await testConnection();
+      if (!dbConnected) {
+        console.warn('⚠️  Database bağlantı hatası - veri kayıt olmayacak');
+        await logSystemEvent('WARNING', 'Database connection failed');
+      } else {
+        await logSystemEvent('INFO', 'System started', { 
+          host: config.plc.host,
+          rack: config.plc.rack,
+          slot: config.plc.slot
+        });
+      }
       console.log('');
 
       // PLC'ye bağlan
@@ -121,6 +137,7 @@ class PLCSystem {
    */
   async performTagReading(readingType = 'Düzenli') {
     const startTime = Date.now();
+    const { saveTagReadings } = require('./database');
     
     try {
       console.log(`\n📖 Tag Okuma Başladı [${readingType}] - ${new Date().toLocaleTimeString('tr-TR')}`);
@@ -140,7 +157,7 @@ class PLCSystem {
         failureCount: results.filter(r => !r.success).length
       };
 
-      // Verileri sakla (ilerde DB'ye yazılacak)
+      // Verileri sakla
       this.readingData.push(readingRecord);
 
       // Sonuçları göster
@@ -161,6 +178,12 @@ class PLCSystem {
       console.log(`  Başarısız: ${readingRecord.failureCount}/${results.length}`);
       console.log(`  Süre: ${readingRecord.duration}ms`);
       console.log(`  İşlem ID: ${readingRecord.timestamp}`);
+
+      // Database'ye kaydet
+      const savedCount = await saveTagReadings(results);
+      if (savedCount > 0) {
+        console.log(`\n💾 Database'ye kaydedildi: ${savedCount} tag`);
+      }
 
       return readingRecord;
 
@@ -194,11 +217,16 @@ class PLCSystem {
   /**
    * Sistemi durdur
    */
-  stop() {
+  async stop() {
     if (this.isRunning) {
       this.scheduler.clearAll();
       this.connection.disconnect();
       this.isRunning = false;
+      
+      // Database pool'u kapat
+      const { closePool } = require('./database');
+      await closePool();
+      
       console.log('🛑 Sistem durduruldu');
     }
     process.exit(0);

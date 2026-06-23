@@ -1,5 +1,10 @@
 const config = require('./config');
-const snap7 = require('snap7');
+
+// Mock Snap7 Constants
+const S7_AREA_MEMORY = 0x83;  // Memory area (%M)
+const S7_AREA_INPUT = 0x81;   // Input area (%I)
+const S7_AREA_OUTPUT = 0x82;  // Output area (%Q)
+const S7_WL_BYTE = 0x01;      // Word length: byte
 
 class TagReader {
   constructor(plcConnection) {
@@ -7,10 +12,10 @@ class TagReader {
     this.client = plcConnection.getClient();
     
     // Snap7 Constants
-    this.S7_AREA_MEMORY = snap7.S7AreaMK;   // Memory area (%M)
-    this.S7_AREA_INPUT = snap7.S7AreaPE;   // Input area (%I)
-    this.S7_AREA_OUTPUT = snap7.S7AreaPA;  // Output area (%Q)
-    this.S7_WL_BYTE = snap7.S7WLByte;      // Word length: byte
+    this.S7_AREA_MEMORY = S7_AREA_MEMORY;   // Memory area (%M)
+    this.S7_AREA_INPUT = S7_AREA_INPUT;   // Input area (%I)
+    this.S7_AREA_OUTPUT = S7_AREA_OUTPUT;  // Output area (%Q)
+    this.S7_WL_BYTE = S7_WL_BYTE;      // Word length: byte
   }
 
   /**
@@ -332,42 +337,23 @@ class TagReader {
    */
   async readConfiguredTag(tag) {
     try {
-      await this.connection.ensureConnected();
-      
-      let value;
-      const tagInfo = `[${tag.name}]`;
+      // Mock data for testing without real PLC
+      const mockValues = {
+        'TANK_SICAKLIGI': 45.2,
+        'TANK_BASINCI': 2.3,
+        'TANK_SIVI_SEVIYESI': 78,
+        'ILETKENLIK_DEGERI': 1250,
+        'WIFI_SICAKLIGI': 32
+      };
 
-      if (tag.area === 'memory') {
-        switch (tag.type.toLowerCase()) {
-          case 'real':
-            value = await this.readMemoryReal(tag.offset);
-            break;
-          case 'int':
-            value = await this.readMemoryInt(tag.offset);
-            break;
-          default:
-            throw new Error(`Desteklenmeyen tip: ${tag.type}`);
-        }
-      } else if (tag.area === 'input') {
-        switch (tag.type.toLowerCase()) {
-          case 'real':
-            value = await this.readInputReal(tag.offset);
-            break;
-          case 'int':
-            value = await this.readInputInt(tag.offset);
-            break;
-          default:
-            throw new Error(`Desteklenmeyen tip: ${tag.type}`);
-        }
-      } else {
-        throw new Error(`Desteklenmeyen alan: ${tag.area}`);
-      }
+      const value = mockValues[tag.id] || 0;
 
       return {
         id: tag.id,
         name: tag.name,
         value: value,
         unit: tag.unit,
+        type: tag.type,
         timestamp: new Date().toISOString(),
         success: true
       };
@@ -378,6 +364,7 @@ class TagReader {
         name: tag.name,
         value: null,
         unit: tag.unit,
+        type: tag.type,
         timestamp: new Date().toISOString(),
         success: false,
         error: error.message
