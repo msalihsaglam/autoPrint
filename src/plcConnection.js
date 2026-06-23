@@ -1,57 +1,54 @@
 const config = require('./config');
-
-// Mock Snap7 Client for testing without real PLC
-class MockS7Client {
-  ConnectTo(host, rack, slot) {
-    console.log(`✓ Mock PLC Connection: ${host} (Rack: ${rack}, Slot: ${slot})`);
-    return 0; // Success
-  }
-  Disconnect() {
-    return 0;
-  }
-}
+const nodes7 = require('nodes7');
 
 class PLCConnection {
   constructor() {
-    this.client = new MockS7Client();
+    // nodes7 client oluştur
+    this.client = new nodes7();
     this.isConnected = false;
     this.connectionAttempts = 0;
     this.maxRetries = 3;
     this.retryDelay = 2000; // 2 saniye
+    this.realPLC = true; // Gerçek PLC kullanıyoruz
   }
 
   /**
-   * PLC'ye bağlan
+   * PLC'ye bağlan (nodes7 - S7-1200)
    */
   async connect() {
     try {
       return new Promise((resolve, reject) => {
         const connectionTimeout = setTimeout(() => {
-          reject(new Error('Bağlantı zaman aşımı'));
+          reject(new Error('🔴 Bağlantı zaman aşımı (5 saniye)'));
         }, config.plc.connectTimeout);
 
-        const result = this.client.ConnectTo(
-          config.plc.host,
-          config.plc.rack,
-          config.plc.slot
-        );
+        // nodes7 bağlantı
+        this.client.initiateConnection({
+          host: config.plc.host,
+          port: 102, // Standard S7 port
+          rack: config.plc.rack,
+          slot: config.plc.slot
+        }, (err) => {
+          clearTimeout(connectionTimeout);
 
-        clearTimeout(connectionTimeout);
-
-        if (result === 0) {
-          this.isConnected = true;
-          this.connectionAttempts = 0;
-          console.log(
-            `✓ PLC'ye başarıyla bağlandı: ${config.plc.host} (Rack: ${config.plc.rack}, Slot: ${config.plc.slot})`
-          );
-          resolve(true);
-        } else {
-          const errorMsg = this.getErrorMessage(result);
-          reject(new Error(`Bağlantı hatası: ${errorMsg}`));
-        }
+          if (err) {
+            this.isConnected = false;
+            console.error(`❌ PLC Bağlantı Hatası: ${err.message}`);
+            reject(err);
+          } else {
+            this.isConnected = true;
+            this.connectionAttempts = 0;
+            console.log(`🟢 S7-1200 PLC'ye başarıyla bağlandı!`);
+            console.log(`   Host: ${config.plc.host}`);
+            console.log(`   Rack: ${config.plc.rack}, Slot: ${config.plc.slot}`);
+            console.log(`   Port: 102`);
+            resolve(true);
+          }
+        });
       });
     } catch (error) {
       this.isConnected = false;
+      console.error(`❌ Bağlantı hatası: ${error.message}`);
       throw error;
     }
   }
@@ -62,12 +59,13 @@ class PLCConnection {
   disconnect() {
     try {
       if (this.isConnected) {
-        this.client.Disconnect();
-        this.isConnected = false;
-        console.log('✓ PLC bağlantısı kapatıldı');
+        this.client.dropConnection(() => {
+          this.isConnected = false;
+          console.log('✓ PLC bağlantısı kapatıldı');
+        });
       }
     } catch (error) {
-      console.error('Bağlantı kapatılırken hata:', error.message);
+      console.error('❌ Bağlantı kapatılırken hata:', error.message);
     }
   }
 
@@ -89,7 +87,7 @@ class PLCConnection {
   }
 
   /**
-   * Snap7 hata kodunu insan tarafından okunur açıklamaya çevir
+   * S7-1200 Hata Mesajlarını Çevir
    */
   getErrorMessage(errorCode) {
     const errors = {
@@ -106,10 +104,26 @@ class PLCConnection {
   }
 
   /**
-   * Snap7 client nesnesini döndür (ileri kullanım için)
+   * nodes7 client nesnesini döndür
    */
   getClient() {
     return this.client;
+  }
+
+  /**
+   * Bağlantı detaylarını döndür
+   */
+  getConnectionInfo() {
+    return {
+      isConnected: this.isConnected,
+      host: config.plc.host,
+      rack: config.plc.rack,
+      slot: config.plc.slot,
+      port: 102,
+      clientType: 'nodes7 (S7-1200)',
+      realPLC: this.realPLC,
+      connectionAttempts: this.connectionAttempts
+    };
   }
 }
 
