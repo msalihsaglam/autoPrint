@@ -1,6 +1,7 @@
 const PLCConnection = require('./plcConnection');
 const TagReader = require('./tagReader');
 const Scheduler = require('./scheduler');
+const APIServer = require('./apiServer');
 const { getAllTags, printTagInfo } = require('./tags');
 const config = require('./config');
 
@@ -23,8 +24,14 @@ class PLCSystem {
     this.connection = new PLCConnection();
     this.tagReader = new TagReader(this.connection);
     this.scheduler = new Scheduler(this.tagReader);
+    this.apiServer = null;
+    
     this.isRunning = false;
     this.readingData = [];
+    
+    // Sistem ayarları
+    this.mode = 'manual';           // 'manual' | 'auto'
+    this.cycle = 'EVERY_24_HOURS';  // Aktif cycle
   }
 
   /**
@@ -47,10 +54,21 @@ class PLCSystem {
       // Okuma görevlerini başlat
       await this.setupReadingTasks();
 
+      // API sunucusunu başlat
+      this.startAPIServer();
+
     } catch (error) {
       console.error('❌ Hata:', error.message);
       this.stop();
     }
+  }
+
+  /**
+   * API sunucusunu başlat
+   */
+  startAPIServer() {
+    this.apiServer = new APIServer(this);
+    this.apiServer.start();
   }
 
   /**
