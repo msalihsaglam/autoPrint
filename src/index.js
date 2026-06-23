@@ -38,8 +38,10 @@ class PLCSystem {
   async start() {
     try {
       console.log('🚀 PLC Veri Okuma Sistemi başlatılıyor...');
+      console.log(`🔴 GERÇEK S7-1200 PLC BAĞLANTISI (Mock Yok)`);
       console.log(`   Host: ${config.plc.host}`);
       console.log(`   Rack: ${config.plc.rack}, Slot: ${config.plc.slot}`);
+      console.log(`   Port: 102`);
       console.log('');
 
       // Database pool'ı başlat
@@ -49,7 +51,7 @@ class PLCSystem {
         console.warn('⚠️  Database bağlantı hatası - veri kayıt olmayacak');
         await logSystemEvent('WARNING', 'Database connection failed');
       } else {
-        await logSystemEvent('INFO', 'System started', { 
+        await logSystemEvent('INFO', 'System started - REAL PLC', { 
           host: config.plc.host,
           rack: config.plc.rack,
           slot: config.plc.slot
@@ -57,9 +59,15 @@ class PLCSystem {
       }
       console.log('');
 
-      // PLC'ye bağlan
+      // PLC'ye bağlan (GERÇEK)
+      console.log('🔌 S7-1200 PLC bağlantısı kuruluyor...');
       await this.connection.connect();
       this.isRunning = true;
+      
+      // Debug: Bağlantı durumunu kontrol et
+      const connInfo = this.connection.getConnectionInfo();
+      console.log(`✅ Bağlantı Durumu - isConnected: ${connInfo.isConnected}`);
+      console.log(`📡 PLC Durumu: ${connInfo.isConnected ? '🟢 BAĞLI (GERÇEK)' : '🔴 BAĞLI DEĞİL'}`);
 
       // Tag bilgilerini göster
       printTagInfo();

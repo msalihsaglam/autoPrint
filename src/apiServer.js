@@ -194,6 +194,40 @@ class APIServer {
       });
     });
 
+    /**
+     * GET /api/debug/plc
+     * DEBUG: PLC bağlantı durumunu göster (GERÇEK S7-1200)
+     */
+    this.app.get('/api/debug/plc', (req, res) => {
+      try {
+        const connectionInfo = this.plcSystem.connection.getConnectionInfo();
+        res.json({
+          debug: true,
+          type: 'REAL_PLC_S7_1200',
+          plc: {
+            isConnected: connectionInfo.isConnected,
+            connectionAttempts: connectionInfo.connectionAttempts,
+            maxRetries: this.plcSystem.connection.maxRetries,
+            clientType: connectionInfo.clientType,
+            host: connectionInfo.host,
+            rack: connectionInfo.rack,
+            slot: connectionInfo.slot,
+            port: connectionInfo.port,
+            realPLC: connectionInfo.realPLC
+          },
+          system: {
+            isRunning: this.plcSystem.isRunning,
+            startMemState: this.plcSystem.startMemState,
+            isMainReadingActive: this.plcSystem.isMainReadingActive
+          },
+          timestamp: new Date().toISOString(),
+          note: '🟢 GERÇEK S7-1200 PLC BAĞLANTISI (Mock Yok)'
+        });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
     // 404 handler
     this.app.use((req, res) => {
       res.status(404).json({ error: 'Endpoint bulunamadı' });
