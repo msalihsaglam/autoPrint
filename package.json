@@ -5,8 +5,21 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
+    "start:standalone": "node src/standalone.js",
     "dev": "nodemon src/index.js",
+    "build:exe": "build.bat",
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "pkg": {
+    "targets": ["node18-win-x64"],
+    "output": "dist/autoprint.exe",
+    "scripts": [
+      "src/**/*.js"
+    ],
+    "assets": [
+      "node_modules/pdfkit/js/data/**",
+      "node_modules/pdfkit/js/font/**"
+    ]
   },
   "keywords": [
     "plc",
@@ -26,6 +39,7 @@
     "pg": "^8.11.3"
   },
   "devDependencies": {
-    "nodemon": "^2.0.20"
+    "nodemon": "^2.0.20",
+    "pkg": "^5.8.1"
   }
 }

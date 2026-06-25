@@ -1,6 +1,8 @@
 // backend/src/apiServer.js
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
+const fs = require('fs');
 const config = require('./config');
 const { Pool } = require('pg'); // 🎯 Docker/PostgreSQL havuzunu bağımsız yönetmek için içeri aldık
 
@@ -167,11 +169,33 @@ class APIServer {
       }
       res.status(400).json({ success: false, message: "Sistem zaten durdurulmuş durumda." });
     });
+
+    // 🖥️ STANDALONE MOD: Frontend statik dosyalarını sun (pkg ile paketlendiğinde veya SERVE_STATIC=true)
+    if (process.pkg || process.env.SERVE_STATIC === 'true') {
+      const staticPath = process.pkg
+        ? path.join(path.dirname(process.execPath), 'public')
+        : path.join(__dirname, '..', 'frontend', 'dist');
+
+      if (fs.existsSync(staticPath)) {
+        app.use(express.static(staticPath));
+        // React SPA için tüm bilinmeyen rotaları index.html'e yönlendir
+        app.get('*', (req, res) => {
+          res.sendFile(path.join(staticPath, 'index.html'));
+        });
+        console.log(`✓ Frontend statik dosyalar sunuluyor: ${staticPath}`);
+      } else {
+        console.warn(`⚠️  Frontend build klasörü bulunamadı: ${staticPath}`);
+        console.warn('    Önce "npm run build" komutuyla frontend\'i derleyin.');
+      }
+    }
   }
 
   start() {
     this.app.listen(this.port, () => {
       console.log(`🌐 API Sunucu http://localhost:${this.port} adresinde aktif.`);
+      if (process.pkg || process.env.SERVE_STATIC === 'true') {
+        console.log(`🖥️  Frontend    http://localhost:${this.port} adresinden erişilebilir.`);
+      }
     });
   }
 }
