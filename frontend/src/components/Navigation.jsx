@@ -8,7 +8,7 @@ export const Navigation = ({ currentPage, onPageChange }) => {
       <div className="nav-container">
         <div className="nav-brand">
           {/* Marka kimliğini net ve keskin endüstriyel formata getirdik */}
-          <h2>⚡ GEM MEKATRONİK | DATA LOGGER</h2>
+          <h2>⚡ Gem Mekatronik | AutoPrint</h2>
         </div>
 
         <div className="nav-menu">
