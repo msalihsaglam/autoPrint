@@ -1,18 +1,20 @@
+// backend/src/index.js
 const PLCConnection = require('./plcConnection');
 const TagReader = require('./tagReader');
 const Scheduler = require('./scheduler');
 const APIServer = require('./apiServer');
-const { getAllTags, getMainTags, getControlTag, printTagInfo } = require('./tags');
 const config = require('./config');
 const database = require('./database');
-const { initializePool, testConnection, logSystemEvent, saveTagReadings } = database;
+const { initializePool, testConnection, saveTagReadings, getPool } = database;
 
-// ============================================================================
-// OKUMA KONTROL AYARLARI
-// ============================================================================
+const fs = require('fs');
+const path = require('path');
+const PDFDocument = require('pdfkit');
+const ptp = require('pdf-to-printer'); 
+
 const READING_INTERVALS = {
-  START_MEM_CHECK: 20 * 1000,       // Start_MEM tag'ını 20 saniyede bir oku
-  MAIN_TAGS_READ: 60 * 1000,        // Main tags'ı (Start_MEM true iken) 1 dakikada bir oku
+  START_MEM_CHECK: 20 * 1000,       
+  MAIN_TAGS_READ: 60 * 1000,        
 };
 
 class PLCSystem {
@@ -26,311 +28,268 @@ class PLCSystem {
     this.isRunning = false;
     this.readingData = [];
     
-    // Sistem durumu
-    this.startMemState = false;        // Son okunan Start_MEM durumu
-    this.isMainReadingActive = false;  // Ana tag okuma durumu
-    this.mainReadingIntervalId = null; // Main tags okuma interval ID
+    this.startMemState = false;        
+    this.isMainReadingActive = false;  
+    this.mainReadingIntervalId = null; 
+    this.currentPLCTags = []; 
+    this.currentCycleStartTime = null; 
+    this.currentCycleDbId = null; 
   }
 
-  /**
-   * Sistemi başlat
-   */
   async start() {
     try {
       console.log('🚀 PLC Veri Okuma Sistemi başlatılıyor...');
-      console.log(`🔴 GERÇEK S7-1200 PLC BAĞLANTISI (Mock Yok)`);
-      console.log(`   Host: ${config.plc.host}`);
-      console.log(`   Rack: ${config.plc.rack}, Slot: ${config.plc.slot}`);
-      console.log(`   Port: 102`);
-      console.log('');
-
-      // Database pool'ı başlat
       initializePool();
-      const dbConnected = await testConnection();
-      if (!dbConnected) {
-        console.warn('⚠️  Database bağlantı hatası - veri kayıt olmayacak');
-        await logSystemEvent('WARNING', 'Database connection failed');
-      } else {
-        await logSystemEvent('INFO', 'System started - REAL PLC', { 
-          host: config.plc.host,
-          rack: config.plc.rack,
-          slot: config.plc.slot
-        });
-      }
-      console.log('');
+      await testConnection();
 
-      // PLC'ye bağlan (GERÇEK)
       console.log('🔌 S7-1200 PLC bağlantısı kuruluyor...');
       await this.connection.connect();
       this.isRunning = true;
       
-      // Debug: Bağlantı durumunu kontrol et
-      const connInfo = this.connection.getConnectionInfo();
-      console.log(`✅ Bağlantı Durumu - isConnected: ${connInfo.isConnected}`);
-      console.log(`📡 PLC Durumu: ${connInfo.isConnected ? '🟢 BAĞLI (GERÇEK)' : '🔴 BAĞLI DEĞİL'}`);
+      const client = this.connection.getClient();
+      client.addItems(['START_MEM', 'TANK_SICAKLIGI', 'TANK_BASINCI', 'TANK_SIVI_SEVIYESI', 'ILETKENLIK_DEGERI', 'WFI_SICAKLIGI']);
 
-      // Tag bilgilerini göster
-      printTagInfo();
-
-      // Okuma görevlerini başlat (örnek veri yazması için devre dışı)
-      // await this.setupReadingTasks();
-
-      // API sunucusunu başlat
+      client.setTranslationCB((tag) => {
+        const addressMap = {
+          'START_MEM': 'DB2,X0.0',
+          'TANK_SICAKLIGI': 'DB2,REAL2',
+          'TANK_BASINCI': 'DB2,REAL6',
+          'TANK_SIVI_SEVIYESI': 'DB2,INT10',
+          'ILETKENLIK_DEGERI': 'DB2,REAL12',
+          'WFI_SICAKLIGI': 'DB2,INT16'
+        };
+        return addressMap[tag];
+      });
+      
+      this.setupReadingTasks();
       this.startAPIServer();
-
     } catch (error) {
       console.error('❌ Hata:', error.message);
       this.stop();
     }
   }
 
-  /**
-   * API sunucusunu başlat
-   */
   startAPIServer() {
     this.apiServer = new APIServer(this);
     this.apiServer.start();
   }
 
-  /**
-   * Tag okuma görevlerini ayarla
-   */
-  async setupReadingTasks() {
-    console.log('\n⏰ OKUMA GÖREVLERİ AYARLANIYÖR:\n');
-
-    // GÖREV 1: Start_MEM tag'ını 20 saniyede bir kontrol et
-    this.scheduler.addPeriodicTask(
-      'start-mem-monitor',
-      () => this.checkStartMemTag(),
-      READING_INTERVALS.START_MEM_CHECK
-    );
-
-    console.log('\n✓ Okuma görevleri başarıyla ayarlandı');
-    console.log('   - Start_MEM tag\'ı 20 saniyede bir kontrol edilecek');
-    console.log('   - TRUE olduğunda: Main tags 1 dakikada bir okunacak');
-    console.log('   - FALSE olduğunda: Okuma durdurulacak\n');
+  setupReadingTasks() {
+    this.scheduler.addPeriodicTask('db2-block-monitor', () => this.scanPLCDataBlock(), READING_INTERVALS.START_MEM_CHECK);
   }
 
-  /**
-   * Start_MEM tag'ını kontrol et ve ana okuma işlemini başlat/durdur
-   */
-  async checkStartMemTag() {
-    try {
-      const controlTag = getControlTag();
-      
-      // Mock data: Start_MEM tag'ını oku
-      const result = {
-        id: controlTag.id,
-        name: controlTag.name,
-        value: Math.random() > 0.5, // Mock boolean value
-        type: controlTag.type,
-        timestamp: new Date().toISOString(),
-        success: true
-      };
+  async scanPLCDataBlock() {
+    if (!this.connection.isConnected) return;
+    const client = this.connection.getClient();
 
-      console.log(`\n⚙️  Start_MEM Kontrol [${new Date().toLocaleTimeString('tr-TR')}]: ${result.value ? '✓ TRUE' : '✗ FALSE'}`);
+    client.readAllItems(async (err, values) => {
+      if (err) return;
 
-      // Durum değişti mi?
-      if (result.value && !this.startMemState) {
-        // FALSE -> TRUE: Ana okumayı başlat
-        console.log('🟢 Start_MEM TRUE oldu - Ana tag okuma başlıyor...');
-        this.startMainReading();
-      } else if (!result.value && this.startMemState) {
-        // TRUE -> FALSE: Ana okumayı durdur
-        console.log('🔴 Start_MEM FALSE oldu - Ana tag okuma durduruldu');
-        this.stopMainReading();
+      try {
+        const plcPayload = this.tagReader.processPLCVals(values);
+        const currentM05 = plcPayload.startMem;
+        this.currentPLCTags = plcPayload.tags; 
+
+        // 🎯 1. YÜKSELEN KENAR: START_MEM TRUE OLDUĞUNDA
+        if (currentM05 && !this.startMemState) {
+          console.log('📈 [YÜKSELEN KENAR DETECTED] Çevrim Başlatılıyor...');
+          this.currentCycleStartTime = new Date();
+          
+          try {
+            // 🛠️ HATA DÜZELTMESİ: Orijinal getPool() fonksiyonu çağrılıyor
+            const activePool = getPool();
+            if (activePool) {
+              const res = await activePool.query(
+                `INSERT INTO production_cycles (start_time, status) VALUES ($1, 'Aktif') RETURNING id`,
+                [this.currentCycleStartTime]
+              );
+              this.currentCycleDbId = res.rows[0].id;
+              console.log(`✅ production_cycles tablosuna yeni çevrim eklendi. Satır ID: ${this.currentCycleDbId}`);
+            }
+          } catch (dbErr) {
+            console.error('❌ production_cycles tablosuna başlama kaydı atılamadı:', dbErr.message);
+          }
+
+          this.startMainReading();
+        } 
+        
+        // 🎯 2. DÜŞEN KENAR: START_MEM FALSE OLDUĞU AN
+        else if (!currentM05 && this.startMemState) {
+          console.log('📉 [DÜŞEN KENAR DETECTED] Çevrim Kapatılıyor...');
+          const cycleEndTime = new Date();
+          
+          if (this.currentCycleDbId) {
+            try {
+              // 🛠️ HATA DÜZELTMESİ: Orijinal getPool() fonksiyonu çağrılıyor
+              const activePool = getPool();
+              if (activePool) {
+                await activePool.query(
+                  `UPDATE production_cycles SET end_time = $1, status = 'Tamamlandı' WHERE id = $2`,
+                  [cycleEndTime, this.currentCycleDbId]
+                );
+                console.log(`🔒 production_cycles tablosundaki Çevrim (#${this.currentCycleDbId}) başarıyla mühürlendi.`);
+              }
+            } catch (dbErr) {
+              console.error('❌ production_cycles tablosu end_time güncellenemedi:', dbErr.message);
+            }
+          }
+
+          await this.stopMainReading();
+        }
+
+        this.startMemState = currentM05;
+      } catch (parseError) {
+        console.error('❌ Veri işleme hatası:', parseError.message);
       }
-
-      // Durumu güncelle
-      this.startMemState = result.value;
-    } catch (error) {
-      console.error('❌ Start_MEM kontrol hatası:', error.message);
-    }
+    });
   }
 
-  /**
-   * Ana tag okuma işlemini başlat
-   */
   startMainReading() {
-    if (this.isMainReadingActive) {
-      console.log('ℹ️  Ana okuma zaten aktif');
-      return;
-    }
-
-    console.log('🟢 Main tags okuma başlatılıyor...');
+    if (this.isMainReadingActive) return;
     this.isMainReadingActive = true;
-
-    // Hemen ilk okumayı yap
-    this.performMainTagsReading('İlk Okuma (Start_MEM TRUE)');
-
-    // Sonra 1 dakikada bir tekrarla
+    this.performMainTagsReading('İlk Tetikleme Çıktısı');
     this.mainReadingIntervalId = setInterval(() => {
-      if (this.isMainReadingActive) {
-        this.performMainTagsReading('Periyodik Okuma (Start_MEM TRUE)');
-      }
+      if (this.isMainReadingActive) this.performMainTagsReading('Periyodik Çevrim Kaydı');
     }, READING_INTERVALS.MAIN_TAGS_READ);
   }
 
-  /**
-   * Ana tag okuma işlemini durdur
-   */
-  stopMainReading() {
-    if (!this.isMainReadingActive) {
-      console.log('ℹ️  Ana okuma zaten durmuş');
-      return;
-    }
-
-    console.log('🔴 Main tags okuma durdurulıyor...');
+  async stopMainReading() {
+    if (!this.isMainReadingActive) return;
     this.isMainReadingActive = false;
-
     if (this.mainReadingIntervalId) {
       clearInterval(this.mainReadingIntervalId);
       this.mainReadingIntervalId = null;
     }
+    await this.generateAndPrintReport();
   }
 
-  /**
-   * Ana tag'ları oku ve database'ye kaydet
-   */
-  async performMainTagsReading(readingType = 'Düzenli') {
-    const startTime = Date.now();
-    
+  async performMainTagsReading(readingType) {
     try {
-      console.log(`\n📖 Ana Tag Okuma Başladı [${readingType}] - ${new Date().toLocaleTimeString('tr-TR')}`);
-      console.log('─'.repeat(60));
-
-      // Ana 5 tag'ı oku
-      const mainTags = getMainTags();
-      const results = await this.tagReader.readConfiguredTags(mainTags);
-
-      // Sonuçları işle
-      const readingRecord = {
-        timestamp: new Date().toISOString(),
-        readingType: readingType,
-        duration: Date.now() - startTime,
-        tags: results,
-        successCount: results.filter(r => r.success).length,
-        failureCount: results.filter(r => !r.success).length
-      };
-
-      // Verileri sakla
-      this.readingData.push(readingRecord);
-
-      // Sonuçları göster
-      console.log('\n📊 Okuma Sonuçları:');
-      console.log('─'.repeat(60));
-      
-      results.forEach((result) => {
-        if (result.success) {
-          console.log(`✓ ${result.name.padEnd(25)} : ${String(result.value).padEnd(12)} ${result.unit}`);
-        } else {
-          console.log(`✗ ${result.name.padEnd(25)} : HATA - ${result.error}`);
-        }
-      });
-
-      console.log('─'.repeat(60));
-      console.log(`\nÖzet:`);
-      console.log(`  Başarılı: ${readingRecord.successCount}/${results.length}`);
-      console.log(`  Başarısız: ${readingRecord.failureCount}/${results.length}`);
-      console.log(`  Süre: ${readingRecord.duration}ms`);
-      console.log(`  İşlem ID: ${readingRecord.timestamp}`);
-
-      // Database'ye kaydet
-      const savedCount = await saveTagReadings(results);
-      if (savedCount > 0) {
-        console.log(`\n💾 Database'ye kaydedildi: ${savedCount} tag`);
-      }
-
-      return readingRecord;
-
+      if (this.currentPLCTags.length === 0) return;
+      await saveTagReadings(this.currentPLCTags);
     } catch (error) {
-      console.error(`❌ Ana tag okuma hatası [${readingType}]:`, error.message);
+      console.error('❌ DB tag yazma hatası:', error.message);
     }
   }
 
-  /**
-   * Okunan verileri getir
-   */
-  getReadingData() {
-    return this.readingData;
+  async generateAndPrintReport(forcedStart = null, forcedEnd = null) {
+    try {
+      // 🛠️ HATA DÜZELTMESİ: Orijinal getPool() entegrasyonu
+      const activePool = getPool();
+      if (!activePool) return;
+
+      let result;
+      const startTimeFilter = forcedStart || this.currentCycleStartTime || new Date(Date.now() - 60 * 60 * 1000);
+      const endTimeFilter = forcedEnd || new Date();
+
+      const queryText = `
+        SELECT reading_timestamp, tag_id, value 
+        FROM tag_readings 
+        WHERE reading_timestamp >= $1 AND reading_timestamp <= $2 AND tag_id != 'START_MEM'
+        ORDER BY reading_timestamp ASC
+      `;
+      result = await activePool.query(queryText, [startTimeFilter, endTimeFilter]);
+
+      if (!result || !result.rows || result.rows.length === 0) {
+        console.log('⚠️ Belirtilen zaman aralığında basılacak veri bulunamadı.');
+        return;
+      }
+
+      const rowsByTime = {};
+      result.rows.forEach(row => {
+        const dateObj = new Date(row.reading_timestamp);
+        const dateStr = dateObj.toLocaleDateString('tr-TR');
+        const timeStr = dateObj.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+        const timeGroupKey = `${dateStr} ${timeStr}`;
+        
+        if (!rowsByTime[timeGroupKey]) {
+          rowsByTime[timeGroupKey] = { time: timeGroupKey, rawTime: dateObj.getTime(), TANK_SICAKLIGI: '-', TANK_BASINCI: '-', TANK_SIVI_SEVIYESI: '-', ILETKENLIK_DEGERI: '-', WFI_SICAKLIGI: '-' };
+        }
+        
+        let val = parseFloat(row.value);
+        if (row.tag_id === 'TANK_SIVI_SEVIYESI' || row.tag_id === 'WFI_SICAKLIGI') {
+          rowsByTime[timeGroupKey][row.tag_id] = isNaN(val) ? '-' : parseInt(val);
+        } else {
+          rowsByTime[timeGroupKey][row.tag_id] = isNaN(val) ? '-' : val.toFixed(2);
+        }
+      });
+
+      const tableRows = Object.values(rowsByTime).sort((a, b) => a.rawTime - b.rawTime);
+
+      const doc = new PDFDocument({ size: 'A4', margin: 30 });
+      const outputsDir = path.join(__dirname, 'outputs');
+      if (!fs.existsSync(outputsDir)) fs.mkdirSync(outputsDir);
+
+      const filePath = path.join(outputsDir, `Rapor_${Date.now()}.pdf`);
+      const writeStream = fs.createWriteStream(filePath);
+      doc.pipe(writeStream);
+
+      doc.font('Helvetica-Bold').fontSize(13).fillColor('#111827');
+      doc.text('PROSES VERI KAYIT RAPORU (DATA LOGGER)', { align: 'center' });
+      doc.moveDown(1);
+
+      const startX = 30;
+      const colX = { time: startX, temp: startX + 105, press: startX + 191, level: startX + 277, cond: startX + 363, wfi: startX + 449 };
+      let currentY = doc.y;
+
+      doc.rect(startX, currentY, 535, 22).fill('#2563eb'); 
+      doc.fillColor('#ffffff').fontSize(8.5).font('Helvetica-Bold');
+      doc.text('KAYIT ZAMANI', colX.time + 5, currentY + 7);
+      doc.text('TANK SICAKLIK', colX.temp + 5, currentY + 7);
+      doc.text('TANK BASINC', colX.press + 5, currentY + 7);
+      doc.text('SIVI SEVIYESI', colX.level + 5, currentY + 7);
+      doc.text('ILETKENLIK', colX.cond + 5, currentY + 7);
+      doc.text('WFI SICAKLIK', colX.wfi + 5, currentY + 7);
+      currentY += 22;
+
+      doc.fillColor('#111827').font('Helvetica').fontSize(8.5);
+      tableRows.forEach((row, index) => {
+        if (currentY > 780) {
+          doc.addPage();
+          currentY = 30;
+          doc.rect(startX, currentY, 535, 22).fill('#2563eb');
+          doc.fillColor('#ffffff').font('Helvetica-Bold');
+          doc.text('KAYIT ZAMANI', colX.time + 5, currentY + 7);
+          currentY += 22;
+          doc.fillColor('#111827').font('Helvetica');
+        }
+
+        if (index % 2 === 1) doc.rect(startX, currentY, 535, 18).fill('#f9fafb');
+        doc.fillColor('#111827');
+        doc.text(String(row.time), colX.time + 5, currentY + 5);
+        doc.text(String(row.TANK_SICAKLIGI), colX.temp + 5, currentY + 5);
+        doc.text(String(row.TANK_BASINCI), colX.press + 5, currentY + 5);
+        doc.text(String(row.TANK_SIVI_SEVIYESI), colX.level + 5, currentY + 5);
+        doc.text(String(row.ILETKENLIK_DEGERI), colX.cond + 5, currentY + 5);
+        doc.text(String(row.WFI_SICAKLIGI), colX.wfi + 5, currentY + 5);
+
+        doc.moveTo(startX, currentY + 18).lineTo(startX + 535, currentY + 18).stroke('#e5e7eb');
+        currentY += 18; 
+      });
+
+      doc.end();
+      writeStream.on('finish', async () => {
+        try { await ptp.print(filePath); } catch (e) { console.error('Yazıcı hatası:', e.message); }
+      });
+    } catch (err) {
+      console.error('Rapor basım hatası:', err.message);
+    }
   }
 
-  /**
-   * Okunan verileri temizle
-   */
-  clearReadingData() {
-    this.readingData = [];
-    console.log('✓ Okunan veriler temizlendi');
-  }
-
-  /**
-   * Belirli okuma türünün verilerini getir
-   */
-  getReadingsByType(readingType) {
-    return this.readingData.filter(r => r.readingType === readingType);
-  }
-
-  /**
-   * Sistemi durdur
-   */
   async stop() {
     if (this.isRunning) {
-      // Main reading interval'ı durdur
-      if (this.mainReadingIntervalId) {
-        clearInterval(this.mainReadingIntervalId);
-      }
-      
+      if (this.mainReadingIntervalId) clearInterval(this.mainReadingIntervalId);
       this.scheduler.clearAll();
       this.connection.disconnect();
       this.isRunning = false;
-      
-      // Database pool'u kapat
-      const { closePool } = require('./database');
-      await closePool();
-      
-      console.log('🛑 Sistem durduruldu');
+      await require('./database').closePool();
     }
     process.exit(0);
   }
 }
 
-/**
- * İşletim Sistemi sinyallerine tepki ver
- */
-function setupSignalHandlers(system) {
-  process.on('SIGINT', () => {
-    console.log('\n');
-    system.stop();
-  });
-
-  process.on('SIGTERM', () => {
-    console.log('\n');
-    system.stop();
-  });
-
-  process.on('uncaughtException', (error) => {
-    console.error('Yakalanmayan hata:', error);
-    system.stop();
-  });
-}
-
-/**
- * Ana giriş noktası
- */
-async function main() {
-  const system = new PLCSystem();
-  setupSignalHandlers(system);
-  
-  // Başlat
-  await system.start();
-
-  // Sistem devam ettikçe çalışır...
-  // Ctrl+C ile durdur
-}
-
-// Başla
-if (require.main === module) {
-  main().catch(console.error);
-}
+const system = new PLCSystem();
+process.on('SIGINT', () => system.stop());
+system.start().catch(console.error);
 
 module.exports = PLCSystem;

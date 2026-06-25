@@ -1,7 +1,4 @@
-/**
- * PLC Tag Okuma Scheduler
- * Periyodik okuma görevlerini yönetir
- */
+// src/scheduler.js
 
 class Scheduler {
   constructor(tagReader) {
@@ -10,12 +7,6 @@ class Scheduler {
     this.intervals = new Map();
   }
 
-  /**
-   * Periyodik görev ekle
-   * @param {string} taskId - Görev ID
-   * @param {Function} callback - Çalıştırılacak fonksiyon
-   * @param {number} interval - Interval (ms)
-   */
   addPeriodicTask(taskId, callback, interval) {
     if (this.intervals.has(taskId)) {
       console.warn(`Görev zaten var: ${taskId}`);
@@ -40,12 +31,6 @@ class Scheduler {
     console.log(`✓ Periyodik görev eklendi: ${taskId} (${interval}ms)`);
   }
 
-  /**
-   * Spesifik saatte görev çalıştır (Cron gibi)
-   * @param {string} taskId - Görev ID
-   * @param {string} time - Saat:Dakika (örn: "14:00")
-   * @param {Function} callback - Çalıştırılacak fonksiyon
-   */
   addDailyTask(taskId, time, callback) {
     if (this.intervals.has(taskId)) {
       console.warn(`Görev zaten var: ${taskId}`);
@@ -58,7 +43,6 @@ class Scheduler {
       const now = new Date();
       const taskTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute);
 
-      // Eğer saat geçtiyse, yarın aynı saatte çalıştır
       let timeUntilTask = taskTime - now;
       if (timeUntilTask < 0) {
         taskTime.setDate(taskTime.getDate() + 1);
@@ -72,8 +56,6 @@ class Scheduler {
         } catch (error) {
           console.error(`Günlük görev hatası [${taskId}]:`, error.message);
         }
-
-        // Sonraki gün için tekrar schedule et
         this.addDailyTask(taskId, time, callback);
       }, timeUntilTask);
     };
@@ -82,9 +64,6 @@ class Scheduler {
     console.log(`✓ Günlük görev eklendi: ${taskId} saat ${time}'de`);
   }
 
-  /**
-   * Tüm görevleri temizle
-   */
   clearAll() {
     this.intervals.forEach((task, taskId) => {
       clearInterval(task.intervalId);
@@ -93,9 +72,6 @@ class Scheduler {
     this.intervals.clear();
   }
 
-  /**
-   * Belirli bir görevi durdur
-   */
   stopTask(taskId) {
     if (this.intervals.has(taskId)) {
       clearInterval(this.intervals.get(taskId).intervalId);
@@ -104,16 +80,12 @@ class Scheduler {
     }
   }
 
-  /**
-   * Tüm görevleri listele
-   */
   listTasks() {
     console.log('\n📋 Aktif Görevler:');
     if (this.intervals.size === 0) {
       console.log('  (Hiçbiri)');
       return;
     }
-
     this.intervals.forEach((task, taskId) => {
       console.log(`  - ${taskId} (${task.interval}ms)`);
     });

@@ -1,11 +1,9 @@
+// src/database.js
 const { Pool } = require('pg');
 const config = require('./config');
 
 let pool = null;
 
-/**
- * Database connection pool oluştur
- */
 function initializePool() {
   if (pool) return pool;
 
@@ -28,14 +26,19 @@ function initializePool() {
   return pool;
 }
 
-/**
- * Tag okuma verisini database'ye yaz
- * @param {Object} reading - Tag reading data
- * @returns {Promise<boolean>}
- */
+// 🎯 HATA ENGELLEYİCİ EMRE AMADE GETPOOL:
+// Eğer havuz o saniye null ise hemen initialize edip canlı bağlantıyı güvenle döner.
+function getPool() {
+  if (!pool) {
+    return initializePool();
+  }
+  return pool;
+}
+
 async function saveTagReading(reading) {
   try {
-    if (!pool) {
+    const activePool = getPool();
+    if (!activePool) {
       console.warn('⚠️  Database pool bağlı değil');
       return false;
     }
@@ -57,7 +60,7 @@ async function saveTagReading(reading) {
       reading.timestamp || new Date()
     ];
 
-    const result = await pool.query(query, values);
+    const result = await activePool.query(query, values);
     return result.rowCount > 0;
   } catch (error) {
     console.error('❌ Tag okuma yazma hatası:', error.message);
@@ -65,19 +68,15 @@ async function saveTagReading(reading) {
   }
 }
 
-/**
- * Birden fazla tag okuma verisini database'ye yaz
- * @param {Array} readings - Array of reading data
- * @returns {Promise<number>} - Yazılan satır sayısı
- */
 async function saveTagReadings(readings) {
   try {
-    if (!pool) {
+    const activePool = getPool();
+    if (!activePool) {
       console.warn('⚠️  Database pool bağlı değil');
       return 0;
     }
 
-    const client = await pool.connect();
+    const client = await activePool.connect();
     let savedCount = 0;
 
     try {
@@ -106,7 +105,7 @@ async function saveTagReadings(readings) {
       }
 
       await client.query('COMMIT');
-      console.log(`✓ ${savedCount}/${readings.length} tag okuma kaydedildi`);
+      console.log(`✓ ${savedCount}/${readings.length} tag okuma veritabanına kaydedildi`);
       return savedCount;
     } catch (error) {
       await client.query('ROLLBACK');
@@ -120,22 +119,12 @@ async function saveTagReadings(readings) {
   }
 }
 
-/**
- * Son N okumayı getir
- * @param {number} limit - Kaç okuma döndüreceği
- * @returns {Promise<Array>}
- */
 async function getLatestReadings(limit = 100) {
   try {
-    if (!pool) return [];
-
-    const query = `
-      SELECT * FROM tag_readings 
-      ORDER BY reading_timestamp DESC 
-      LIMIT $1
-    `;
-    
-    const result = await pool.query(query, [limit]);
+    const activePool = getPool();
+    if (!activePool) return [];
+    const query = `SELECT * FROM tag_readings ORDER BY reading_timestamp DESC LIMIT $1`;
+    const result = await activePool.query(query, [limit]);
     return result.rows;
   } catch (error) {
     console.error('❌ Okuma getirme hatası:', error.message);
@@ -143,24 +132,12 @@ async function getLatestReadings(limit = 100) {
   }
 }
 
-/**
- * Belirli tag'ın okumalarını getir
- * @param {string} tagId - Tag ID
- * @param {number} limit - Kaç okuma döndüreceği
- * @returns {Promise<Array>}
- */
 async function getReadingsByTag(tagId, limit = 100) {
   try {
-    if (!pool) return [];
-
-    const query = `
-      SELECT * FROM tag_readings 
-      WHERE tag_id = $1
-      ORDER BY reading_timestamp DESC 
-      LIMIT $2
-    `;
-    
-    const result = await pool.query(query, [tagId, limit]);
+    const activePool = getPool();
+    if (!activePool) return [];
+    const query = `SELECT * FROM tag_readings WHERE tag_id = $1 ORDER BY reading_timestamp DESC LIMIT $2`;
+    const result = await activePool.query(query, [tagId, limit]);
     return result.rows;
   } catch (error) {
     console.error('❌ Tag okuma getirme hatası:', error.message);
@@ -168,23 +145,12 @@ async function getReadingsByTag(tagId, limit = 100) {
   }
 }
 
-/**
- * Tarih aralığında okumalar getir
- * @param {Date} startDate - Başlangıç tarihi
- * @param {Date} endDate - Bitiş tarihi
- * @returns {Promise<Array>}
- */
 async function getReadingsByDateRange(startDate, endDate) {
   try {
-    if (!pool) return [];
-
-    const query = `
-      SELECT * FROM tag_readings 
-      WHERE reading_timestamp BETWEEN $1 AND $2
-      ORDER BY reading_timestamp DESC
-    `;
-    
-    const result = await pool.query(query, [startDate, endDate]);
+    const activePool = getPool();
+    if (!activePool) return [];
+    const query = `SELECT * FROM tag_readings WHERE reading_timestamp BETWEEN $1 AND $2 ORDER BY reading_timestamp DESC`;
+    const result = await activePool.query(query, [startDate, endDate]);
     return result.rows;
   } catch (error) {
     console.error('❌ Tarih aralığı okuma hatası:', error.message);
@@ -192,39 +158,35 @@ async function getReadingsByDateRange(startDate, endDate) {
   }
 }
 
-/**
- * System log yazma
- * @param {string} level - Log level (INFO, WARNING, ERROR)
- * @param {string} message - Log mesajı
- * @param {Object} details - Detaylı bilgi
- */
 async function logSystemEvent(level, message, details = {}) {
   try {
-    if (!pool) return;
-
-    const query = `
-      INSERT INTO system_logs (level, message, details)
-      VALUES ($1, $2, $3)
-    `;
-
-    await pool.query(query, [level, message, JSON.stringify(details)]);
+    const activePool = getPool();
+    if (!activePool) return;
+    const query = `INSERT INTO system_logs (level, message, details) VALUES ($1, $2, $3)`;
+    await activePool.query(query, [level, message, JSON.stringify(details)]);
   } catch (error) {
     console.error('❌ Log yazma hatası:', error.message);
   }
 }
 
-/**
- * Database connection'u test et
- */
 async function testConnection() {
   try {
-    if (!pool) {
-      console.log('⚠️  Pool henüz oluşturulmadı');
-      return false;
-    }
-
-    const result = await pool.query('SELECT NOW()');
+    const activePool = getPool();
+    if (!activePool) return false;
+    const result = await activePool.query('SELECT NOW()');
     console.log('✓ Database bağlantısı başarılı:', result.rows[0]);
+    
+    console.log('🛠️ Üretim Çevrim tablosu kontrol ediliyor...');
+    await activePool.query(`
+      CREATE TABLE IF NOT EXISTS production_cycles (
+        id SERIAL PRIMARY KEY,
+        start_time TIMESTAMP NOT NULL,
+        end_time TIMESTAMP,
+        status VARCHAR(50) DEFAULT 'Aktif'
+      );
+    `);
+    console.log('✓ Üretim takip tablosu (production_cycles) aktif ve hazır.');
+    
     return true;
   } catch (error) {
     console.error('❌ Database bağlantı hatası:', error.message);
@@ -232,9 +194,6 @@ async function testConnection() {
   }
 }
 
-/**
- * Connection pool'u kapat
- */
 async function closePool() {
   if (pool) {
     await pool.end();
@@ -245,7 +204,7 @@ async function closePool() {
 
 module.exports = {
   initializePool,
-  getPool: () => pool,
+  getPool, // Fonksiyon referansı dışarıya verildi
   saveTagReading,
   saveTagReadings,
   getLatestReadings,

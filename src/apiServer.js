@@ -1,257 +1,186 @@
+// backend/src/apiServer.js
 const express = require('express');
 const cors = require('cors');
-const { getAllTags } = require('./tags');
+const config = require('./config');
+const { Pool } = require('pg'); // 🎯 Docker/PostgreSQL havuzunu bağımsız yönetmek için içeri aldık
 
 class APIServer {
   constructor(plcSystem) {
-    this.app = express();
     this.plcSystem = plcSystem;
-    this.port = process.env.API_PORT || 3001;
+    this.app = express();
+    this.port = (config && config.server && config.server.port) ? config.server.port : 3001;
+    
+    // 🎯 DOCKER DB BAĞLANTI HAVUZU: Dış referansların çakışmasını engellemek için lokal havuz oluşturuldu
+    this.localPool = new Pool({
+      host: process.env.DB_HOST || 'localhost',
+      port: process.env.DB_PORT || 5432,
+      database: process.env.DB_NAME || 'plc_readings',
+      user: process.env.DB_USER || 'plcuser',
+      password: process.env.DB_PASSWORD || 'plcpass123',
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 2000,
+    });
+
+    this.localPool.on('error', (err) => {
+      console.error('❌ API Server Lokal DB Pool Hatası:', err.message);
+    });
+    
+    this.setupMiddleware();
+    this.setupRoutes();
   }
 
   setupMiddleware() {
     this.app.use(cors());
     this.app.use(express.json());
-
-    // Logging middleware
-    this.app.use((req, res, next) => {
-      console.log(`📡 ${req.method} ${req.path}`);
-      next();
-    });
   }
 
   setupRoutes() {
-    // ========================================================================
-    // TAG'LAR
-    // ========================================================================
-    
-    /**
-     * GET /api/tags
-     * Tüm tag'ları döndür
-     */
-    this.app.get('/api/tags', (req, res) => {
-      try {
-        const tags = getAllTags();
-        res.json(tags);
-      } catch (error) {
-        res.status(500).json({ error: error.message });
-      }
-    });
+    const app = this.app;
+    const system = this.plcSystem;
 
-    // ========================================================================
-    // SİSTEM DURUMU
-    // ========================================================================
-
-    /**
-     * GET /api/system/status
-     * Sistem durumunu döndür (Start_MEM durumu, okuma aktif/durmuş, vb.)
-     */
-    this.app.get('/api/system/status', (req, res) => {
-      try {
-        res.json({
-          isRunning: this.plcSystem.isRunning || false,
-          startMemState: this.plcSystem.startMemState || false,
-          isMainReadingActive: this.plcSystem.isMainReadingActive || false,
-          timestamp: new Date().toISOString(),
-          description: {
-            startMemState: 'Start_MEM tag durumu (TRUE/FALSE)',
-            isMainReadingActive: 'Ana 5 tag okuma durumu'
-          }
-        });
-      } catch (error) {
-        res.status(500).json({ error: error.message });
-      }
-    });
-
-    /**
-     * POST /api/system/mode
-     * DEPRECATED - Sistem Start_MEM tag'ı ile kontrol edilir
-     */
-    this.app.post('/api/system/mode', async (req, res) => {
+    // Sistem genel durumunu ön yüze paslar
+    app.get('/api/system/status', (req, res) => {
       res.json({
-        deprecated: true,
-        message: 'Mode seçimi artık Start_MEM tag\'ı ile kontrol edilir'
+        isRunning: system.isRunning,
+        startMemState: system.startMemState,
+        isMainReadingActive: system.isMainReadingActive
       });
     });
 
-    /**
-     * POST /api/system/cycle
-     * DEPRECATED - Sistem Start_MEM tag'ı True iken dakikada bir okur
-     */
-    this.app.post('/api/system/cycle', async (req, res) => {
-      res.json({
-        deprecated: true,
-        message: 'Cycle seçimi artık kullanılmıyor. Start_MEM True iken 1 dakikada bir okuma yapılır'
-      });
+    // Tag listesi
+    app.get('/api/tags', (req, res) => {
+      res.json(system.currentPLCTags);
     });
 
-    // ========================================================================
-    // OKUMA İŞLEMLERİ
-    // ========================================================================
-
-    /**
-     * POST /api/reading/trigger
-     * DEPRECATED - Sistem Start_MEM tag'ı ile kontrol edilir
-     */
-    this.app.post('/api/reading/trigger', async (req, res) => {
+    // En son kaydedilen okumayı döner
+    app.get('/api/reading/last', async (req, res) => {
       try {
+        const timestamp = new Date().toISOString();
         res.json({
-          deprecated: true,
-          message: 'Manuel trigger kaldırıldı. Sistem Start_MEM tag\'ı ile kontrol edilir'
+          timestamp: timestamp,
+          readingType: system.isMainReadingActive ? 'Periyodik Çevrim Kaydı' : 'Beklemede',
+          successCount: system.currentPLCTags.filter(t => t.success).length,
+          tags: system.currentPLCTags
         });
-      } catch (error) {
-        res.status(500).json({ 
-          success: false,
-          error: error.message 
-        });
+      } catch (err) {
+        res.status(500).json({ error: err.message });
       }
     });
 
-    /**
-     * GET /api/reading/last
-     * Son okuma verilerini döndür
-     */
-    this.app.get('/api/reading/last', (req, res) => {
+    // 🎯 DOĞRUDAN ÜRETİM ÇEVRİMLERİ TABLOSUNU SORGULAYAN YENİ ARŞİV MOTORU
+    app.get('/api/reports/history', async (req, res) => {
       try {
-        const readingData = this.plcSystem.getReadingData?.() || [];
-        const lastReading = readingData[readingData.length - 1] || null;
+        // Yükselen ve düşen kenar anında mühürlenen gerçek çevrim kayıtlarını çekiyoruz
+        const result = await this.localPool.query(`
+          SELECT id, start_time, end_time, status 
+          FROM production_cycles 
+          ORDER BY start_time DESC 
+          LIMIT 20
+        `);
+        
+        const history = result.rows.map(row => ({
+          id: row.id,
+          startTime: row.start_time,
+          endTime: row.end_time || new Date().toISOString(),
+          status: row.status
+        }));
 
-        res.json(lastReading || {
-          tags: [],
-          timestamp: new Date().toISOString(),
-          readingType: 'Veri Yok',
-          successCount: 0,
-          failureCount: 0
-        });
-      } catch (error) {
-        res.status(500).json({ error: error.message });
+        return res.json({ success: true, data: history });
+
+      } catch (err) {
+        console.error('❌ Geçmiş arşiv API hatası:', err.message);
+        return res.json({ success: false, error: err.message, data: [] });
       }
     });
 
-    /**
-     * GET /api/reading/all
-     * Tüm okuma verilerini database'den döndür
-     * Query: ?limit=100 (default), ?tagId=TANK_SICAKLIGI (opsiyonel filtre)
-     */
-    this.app.get('/api/reading/all', async (req, res) => {
+    // 🎯 GEÇMİŞ BİR RAPORU YENİDEN YAZDIR
+    app.post('/api/reports/reprint', async (req, res) => {
+      const { startTime, endTime } = req.body;
+      if (!startTime || !endTime) {
+        return res.status(400).json({ success: false, message: "Başlangıç ve bitiş zamanları zorunludur." });
+      }
+
       try {
-        const limit = parseInt(req.query.limit) || 100;
-        const tagId = req.query.tagId || null;
+        console.log(`🌐 Geçmiş rapor yeniden yazdırma isteği alındı: Aralık [${startTime} - ${endTime}]`);
+        
+        const originalStartTime = system.currentCycleStartTime;
+        system.currentCycleStartTime = new Date(startTime);
+        
+        // Bu iki tarih parametresi index.js içindeki generateAndPrintReport fonksiyonuna akarak tag_readings'i filtreler
+        await system.generateAndPrintReport(new Date(startTime), new Date(endTime));
+        
+        system.currentCycleStartTime = originalStartTime;
+        res.json({ success: true, message: "Geçmiş rapor başarıyla yazıcı kuyruğuna gönderildi." });
+      } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+      }
+    });
 
-        let readings = [];
-
-        if (tagId) {
-          // Belirli tag'ın verilerini getir
-          readings = await this.plcSystem.database.getReadingsByTag(tagId, limit);
-        } else {
-          // Tüm son okumalar
-          readings = await this.plcSystem.database.getLatestReadings(limit);
+    // 🟢 FRONTEND MANUEL START ENDPOINT'I (Mühür Desteği ile)
+    app.post('/api/system/start-manual', async (req, res) => {
+      if (!system.startMemState) {
+        console.log('🌐 Frontend üzerinden MANUEL START tetiklendi.');
+        system.currentCycleStartTime = new Date();
+        
+        try {
+          // Manuel döngü başlatıldığında da üretim çevrim tablosuna mühür satırını açıyoruz
+          const resDb = await this.localPool.query(
+            `INSERT INTO production_cycles (start_time, status) VALUES ($1, 'Manuel Aktif') RETURNING id`,
+            [system.currentCycleStartTime]
+          );
+          system.currentCycleDbId = resDb.rows[0].id;
+          console.log(`✅ [Manuel Başlangıç] production_cycles Kaydı Açıldı. ID: ${system.currentCycleDbId}`);
+        } catch (e) {
+          console.error('Manuel start çevrim tablosu yazma hatası:', e.message);
         }
 
-        res.json({
-          data: readings,
-          count: readings.length,
-          limit,
-          tagId: tagId || 'all'
-        });
-      } catch (error) {
-        res.status(500).json({ error: error.message });
+        system.startMainReading();
+        system.startMemState = true; 
+        return res.json({ success: true, message: "Manuel tarama periyodu başlatıldı." });
       }
+      res.status(400).json({ success: false, message: "Sistem zaten aktif çalışıyor." });
     });
 
-    /**
-     * GET /api/reading/by-type/:type
-     * Belirli okuma türünün verilerini döndür
-     */
-    this.app.get('/api/reading/by-type/:type', (req, res) => {
-      try {
-        const { type } = req.params;
-        const readingData = this.plcSystem.getReadingsByType?.(type) || [];
+    // 🔴 FRONTEND MANUEL STOP VE YAZICI ENDPOINT'I (Mühür Kapatma Desteği ile)
+    app.post('/api/system/stop-manual', async (req, res) => {
+      if (system.startMemState) {
+        console.log('🌐 Frontend üzerinden MANUEL STOP tetiklendi. Çıktı hazırlanıyor...');
+        const cycleEndTime = new Date();
 
-        res.json({
-          type,
-          data: readingData.reverse(),
-          count: readingData.length
-        });
-      } catch (error) {
-        res.status(500).json({ error: error.message });
+        if (system.currentCycleDbId) {
+          try {
+            // Açık olan manuel çevrim kaydının bitiş zamanını mühürleyip kapatıyoruz
+            await this.localPool.query(
+              `UPDATE production_cycles SET end_time = $1, status = 'Tamamlandı' WHERE id = $2`,
+              [cycleEndTime, system.currentCycleDbId]
+            );
+            console.log(`🔒 [Manuel Bitiş] production_cycles Kaydı Kapatıldı. ID: ${system.currentCycleDbId}`);
+          } catch (e) {
+            console.error('Manuel stop çevrim tablosu güncelleme hatası:', e.message);
+          }
+        }
+
+        await system.stopMainReading();
+        system.startMemState = false; 
+        return res.json({ success: true, message: "Manuel periyot durduruldu ve çıktı alındı." });
       }
-    });
-
-    // ========================================================================
-    // HEALTH CHECK
-    // ========================================================================
-
-    /**
-     * GET /api/health
-     * API durumunu kontrol et
-     */
-    this.app.get('/api/health', (req, res) => {
-      res.json({
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime()
-      });
-    });
-
-    /**
-     * GET /api/debug/plc
-     * DEBUG: PLC bağlantı durumunu göster (GERÇEK S7-1200)
-     */
-    this.app.get('/api/debug/plc', (req, res) => {
-      try {
-        const connectionInfo = this.plcSystem.connection.getConnectionInfo();
-        res.json({
-          debug: true,
-          type: 'REAL_PLC_S7_1200',
-          plc: {
-            isConnected: connectionInfo.isConnected,
-            connectionAttempts: connectionInfo.connectionAttempts,
-            maxRetries: this.plcSystem.connection.maxRetries,
-            clientType: connectionInfo.clientType,
-            host: connectionInfo.host,
-            rack: connectionInfo.rack,
-            slot: connectionInfo.slot,
-            port: connectionInfo.port,
-            realPLC: connectionInfo.realPLC
-          },
-          system: {
-            isRunning: this.plcSystem.isRunning,
-            startMemState: this.plcSystem.startMemState,
-            isMainReadingActive: this.plcSystem.isMainReadingActive
-          },
-          timestamp: new Date().toISOString(),
-          note: '🟢 GERÇEK S7-1200 PLC BAĞLANTISI (Mock Yok)'
-        });
-      } catch (error) {
-        res.status(500).json({ error: error.message });
-      }
-    });
-
-    // 404 handler
-    this.app.use((req, res) => {
-      res.status(404).json({ error: 'Endpoint bulunamadı' });
+      res.status(400).json({ success: false, message: "Sistem zaten durdurulmuş durumda." });
     });
   }
 
   start() {
-    this.setupMiddleware();
-    this.setupRoutes();
-    
     this.app.listen(this.port, () => {
-      console.log(`\n✓ API Sunucusu başlatıldı: http://localhost:${this.port}`);
-      console.log(`  📡 Endpoint'ler:`);
-      console.log(`     GET  /api/health - Health check`);
-      console.log(`     GET  /api/tags - Tüm tag'ları getir`);
-      console.log(`     GET  /api/system/status - Sistem durumu`);
-      console.log(`     POST /api/system/mode - Modu değiştir`);
-      console.log(`     POST /api/system/cycle - Cycle'ı değiştir`);
-      console.log(`     POST /api/reading/trigger - Manuel okuma`);
-      console.log(`     GET  /api/reading/last - Son okuma`);
-      console.log(`     GET  /api/reading/all - Tüm okumalar`);
-      console.log(`     GET  /api/reading/by-type/:type - Türe göre okuma\n`);
+      console.log(`🌐 API Sunucu http://localhost:${this.port} adresinde aktif.`);
     });
   }
 }
+
+// Havuzun sistem kapanırken temiz kapatılması için emniyet adımı
+process.on('SIGINT', async () => {
+  if (global.localPool) {
+    await global.localPool.end();
+  }
+});
 
 module.exports = APIServer;

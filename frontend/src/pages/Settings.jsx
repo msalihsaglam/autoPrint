@@ -1,9 +1,10 @@
+// frontend/src/pages/Settings.jsx
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import './Settings.css';
 
 export const Settings = () => {
-  const { systemStatus, lastReading, loading, error } = useApp();
+  const { systemStatus, lastReading, error } = useApp();
   const [lastUpdated, setLastUpdated] = useState(null);
 
   useEffect(() => {
@@ -13,17 +14,17 @@ export const Settings = () => {
   const getReadingStatus = () => {
     if (systemStatus.startMemState) {
       return {
-        label: 'AKTIF ✓',
+        label: 'ÜRETİM AKTİF ✓',
         emoji: '🟢',
         color: '#10b981',
-        detail: 'Ana tag okumalar devam ediyor'
+        detail: 'PLC verileri veritabanına periyodik olarak işleniyor.'
       };
     } else {
       return {
-        label: 'DURDU ✗',
+        label: 'PERİYOT DURDU ✗',
         emoji: '🔴',
         color: '#ef4444',
-        detail: 'Ana tag okumalar durdurulmuş'
+        detail: 'Çevrim bitti, otomatik yazıcı çıktısı tetiklendi.'
       };
     }
   };
@@ -33,22 +34,22 @@ export const Settings = () => {
   return (
     <div className="settings-page">
       <div className="container">
-        <h1>⚙️ Sistem Ayarları</h1>
+        <h1>⚙️ Sistem Ayarları & Otomasyon Durumu</h1>
 
         {error && <div className="alert alert-error">{error}</div>}
 
-        {/* Sistem Durumu Paneli */}
+        {/* Canlı Sistem Durumu */}
         <div className="card status-card">
           <div className="card-header">
-            <h2>🔍 Sistem Durumu</h2>
-            <p className="card-subtitle">Okuma işleminin gerçek zamanlı durumu</p>
+            <h2>🔍 Donanım Durum İzleme</h2>
+            <p className="card-subtitle">S7-1200 tetikleme mekanizmasının anlık durumu</p>
           </div>
           <div className="card-body">
             <div className="status-display" style={{ borderLeft: `4px solid ${statusInfo.color}` }}>
               <div className="status-main">
                 <span className="status-emoji">{statusInfo.emoji}</span>
                 <div className="status-info">
-                  <h3>START_MEM Durumu</h3>
+                  <h3>START_MEM Sinyali</h3>
                   <p className="status-value" style={{ color: statusInfo.color }}>
                     {statusInfo.label}
                   </p>
@@ -57,108 +58,87 @@ export const Settings = () => {
               <p className="status-detail">{statusInfo.detail}</p>
             </div>
 
-            {/* Durumu Açıklaması */}
             <div className="status-explanation">
               <div className="explanation-item">
                 <span className="exp-icon">📌</span>
                 <div>
-                  <strong>START_MEM Etkin:</strong> {systemStatus.startMemState ? 'Evet' : 'Hayır'}
+                  <strong>Sinyal Durumu:</strong> {systemStatus.startMemState ? 'Sinyal Var (True)' : 'Sinyal Kesik (False)'}
                 </div>
               </div>
               <div className="explanation-item">
                 <span className="exp-icon">📊</span>
                 <div>
-                  <strong>Ana Tag Okuma:</strong> {systemStatus.isMainReadingActive ? 'Çalışıyor' : 'Durmada'}
+                  <strong>DB Döngüsü:</strong> {systemStatus.isMainReadingActive ? 'Kayıt Devam Ediyor' : 'Kayıt Pasif'}
                 </div>
               </div>
-              {lastReading && (
-                <div className="explanation-item">
-                  <span className="exp-icon">⏰</span>
-                  <div>
-                    <strong>Son Okuma:</strong> {new Date(lastReading.reading_timestamp).toLocaleTimeString('tr-TR')}
-                  </div>
-                </div>
-              )}
               <div className="explanation-item">
                 <span className="exp-icon">🔄</span>
                 <div>
-                  <strong>Güncelleme:</strong> {lastUpdated}
+                  <strong>Son İletişim:</strong> {lastUpdated}
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Okuma Sistemi Açıklaması */}
+        {/* Otomasyon Algoritma Kartı */}
         <div className="card info-card">
-          <h3>📖 Okuma Sistemi Nasıl Çalışır?</h3>
+          <h3>🖨️ Yazıcı ve Çevrim Algoritması Nasıl Çalışır?</h3>
           <div className="info-content">
             <div className="info-section">
-              <h4>🟢 START_MEM = TRUE (Aktif)</h4>
+              <h4>🟢 Sinyal True Olduğunda</h4>
               <ul>
-                <li>Ana tag okumalar hemen başlar</li>
-                <li>Sonra <strong>dakikada bir</strong> otomatik olarak tekrar okunur</li>
-                <li>Tank Sıcaklığı, Basınç, Sıvı Seviyesi, İletkenlik, WiFi Sıcaklığı okunur</li>
+                <li>Sistem yeni bir üretim çevrimi başlatır.</li>
+                <li>Dakikada bir kez tüm verileri Docker DB üzerine kaydeder.</li>
+                <li>Operatör ekranı 5 saniyede bir canlı verilerle beslenir.</li>
               </ul>
             </div>
 
             <div className="info-section">
-              <h4>🔴 START_MEM = FALSE (Durdu)</h4>
+              <h4>🔴 Sinyal False Olduğunda</h4>
               <ul>
-                <li>Ana tag okumalar durdurulur</li>
-                <li>Mevcut değerler bellekte tutulur</li>
-                <li>START_MEM tekrar TRUE olana kadar yeni okuma yapılmaz</li>
-              </ul>
-            </div>
-
-            <div className="info-section">
-              <h4>⏱️ Kontrol Frekansı</h4>
-              <ul>
-                <li>START_MEM etiketi <strong>20 saniyede bir</strong> kontrol edilir</li>
-                <li>Etikette değişiklik tespit edilirse, okuma durdurulur veya başlatılır</li>
+                <li>Veritabanı kayıt döngüsü derhal sonlandırılır.</li>
+                <li>O ana kadar biriken veriler toparlanarak otomatik bir PDF rapor dosyası oluşturulur.</li>
+                <li><strong>Sunucuya bağlı varsayılan yazıcıdan otomatik fiziksel çıktı çıkartılır.</strong></li>
               </ul>
             </div>
           </div>
         </div>
 
-        {/* Teknik Bilgiler */}
+        {/* Teknik Donanım Parametre Kartı */}
         <div className="card tech-card">
-          <h3>⚡ Teknik Detaylar</h3>
+          <h3>⚡ Yazılım & Donanım Detayları</h3>
           <div className="tech-grid">
             <div className="tech-item">
-              <span className="tech-label">API Endpoint</span>
-              <span className="tech-value">/api/system/status</span>
-            </div>
-            <div className="tech-item">
               <span className="tech-label">Kontrol Etiketi</span>
-              <span className="tech-value">START_MEM (%M0.5)</span>
+              <span className="tech-value">START_MEM (DB2,X0.0)</span>
             </div>
             <div className="tech-item">
-              <span className="tech-label">Okuma Aralığı</span>
-              <span className="tech-value">60 saniye</span>
+              <span className="tech-label">Haberleşme Protokolü</span>
+              <span className="tech-value">S7 Comm (nodes7)</span>
             </div>
             <div className="tech-item">
-              <span className="tech-label">Kontrol Frekansı</span>
-              <span className="tech-value">20 saniye</span>
+              <span className="tech-label">Yazıcı Modülü</span>
+              <span className="tech-value">pdf-to-printer (Auto)</span>
             </div>
           </div>
         </div>
 
         {/* Son Okuma İstatistikleri */}
         {lastReading && (
-          <div className="card stats-card">
+          <div className="card stats-card" style={{ marginTop: '20px' }}>
             <h3>📈 Son Okuma İstatistikleri</h3>
             <div className="stats-grid">
               <div className="stat-item">
                 <span className="stat-label">Başarılı Tag</span>
                 <span className="stat-value" style={{ color: '#10b981' }}>
-                  {lastReading.reading_timestamp ? '✓' : '✗'}
+                  {lastReading.tags ? '✓' : '✗'}
                 </span>
               </div>
               <div className="stat-item">
                 <span className="stat-label">Zaman Damgası</span>
                 <span className="stat-value">
-                  {new Date(lastReading.reading_timestamp).toLocaleString('tr-TR')}
+                  {new Date(lastReading.timestamp).toLocaleString('tr-TR')}
                 </span>
               </div>
             </div>

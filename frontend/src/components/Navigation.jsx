@@ -1,3 +1,4 @@
+// frontend/src/components/Navigation.jsx (veya projedeki yeri)
 import React from 'react';
 import './Navigation.css';
 
@@ -6,7 +7,8 @@ export const Navigation = ({ currentPage, onPageChange }) => {
     <nav className="nav">
       <div className="nav-container">
         <div className="nav-brand">
-          <h2>🔷 PLC System</h2>
+          {/* Marka kimliğini net ve keskin endüstriyel formata getirdik */}
+          <h2>⚡ GEM MEKATRONİK | DATA LOGGER</h2>
         </div>
 
         <div className="nav-menu">
@@ -14,16 +16,14 @@ export const Navigation = ({ currentPage, onPageChange }) => {
             className={`nav-link ${currentPage === 'dashboard' ? 'active' : ''}`}
             onClick={() => onPageChange('dashboard')}
           >
-            📊 Dashboard
+            📊 Canlı İzleme Paneli
           </button>
-          <button
-            className={`nav-link ${currentPage === 'settings' ? 'active' : ''}`}
-            onClick={() => onPageChange('settings')}
-          >
-            ⚙️ Ayarlar
-          </button>
+          
+          {/* ⚙️ Ayarlar butonu buradan tamamen kaldırıldı */}
         </div>
       </div>
     </nav>
   );
 };
+
+export default Navigation;
