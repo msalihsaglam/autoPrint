@@ -46,7 +46,8 @@ class APIServer {
       res.json({
         isRunning: system.isRunning,
         startMemState: system.startMemState,
-        isMainReadingActive: system.isMainReadingActive
+        isMainReadingActive: system.isMainReadingActive,
+        plcConnected: system.connection.isConnected
       });
     });
 

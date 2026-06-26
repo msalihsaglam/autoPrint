@@ -1,8 +1,11 @@
 // frontend/src/components/Navigation.jsx (veya projedeki yeri)
 import React from 'react';
+import { useApp } from '../context/AppContext';
 import './Navigation.css';
 
 export const Navigation = ({ currentPage, onPageChange }) => {
+  const { systemStatus } = useApp();
+
   return (
     <nav className="nav">
       <div className="nav-container">
@@ -12,6 +15,13 @@ export const Navigation = ({ currentPage, onPageChange }) => {
         </div>
 
         <div className="nav-menu">
+          <div className={`plc-status ${systemStatus.plcConnected ? 'plc-status--online' : 'plc-status--offline'}`}>
+            <span className="plc-status__dot"></span>
+            <span className="plc-status__text">
+              {systemStatus.plcConnected ? 'PLC Haberleşmesi Var' : 'PLC Haberleşmesi Yok'}
+            </span>
+          </div>
+
           <button
             className={`nav-link ${currentPage === 'dashboard' ? 'active' : ''}`}
             onClick={() => onPageChange('dashboard')}

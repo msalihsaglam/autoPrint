@@ -25,6 +25,47 @@
 .nav-menu {
   display: flex;
   gap: var(--spacing-lg);
+  align-items: center;
+}
+
+.plc-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1.5px solid;
+}
+
+.plc-status--online {
+  background-color: #d1fae5;
+  border-color: #6ee7b7;
+  color: #065f46;
+}
+
+.plc-status--offline {
+  background-color: #fee2e2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+.plc-status__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.plc-status--online .plc-status__dot {
+  background-color: #10b981;
+  box-shadow: 0 0 0 2px #6ee7b7;
+}
+
+.plc-status--offline .plc-status__dot {
+  background-color: #ef4444;
+  box-shadow: 0 0 0 2px #fca5a5;
 }
 
 .nav-link {

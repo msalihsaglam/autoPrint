@@ -10,7 +10,8 @@ export const AppProvider = ({ children }) => {
   const [systemStatus, setSystemStatus] = useState({
     isRunning: false,
     startMemState: false,
-    isMainReadingActive: false
+    isMainReadingActive: false,
+    plcConnected: false
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
