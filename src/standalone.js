@@ -188,7 +188,7 @@ class PLCSystem {
         'TANK_SICAKLIGI': 'DB2,REAL2',
         'TANK_BASINCI': 'DB2,REAL6',
         'TANK_SIVI_SEVIYESI': 'DB2,INT10',
-        'ILETKENLIK_DEGERI': 'DB2,INT12'
+          'ILETKENLIK_DEGERI': 'DB2,REAL12'
       };
       return addressMap[tag];
     });
@@ -341,7 +341,7 @@ class PLCSystem {
         }
 
         let val = parseFloat(row.value);
-        if (row.tag_id === 'TANK_SIVI_SEVIYESI' || row.tag_id === 'ILETKENLIK_DEGERI') {
+        if (row.tag_id === 'TANK_SIVI_SEVIYESI') {
           rowsByTime[timeGroupKey][row.tag_id] = isNaN(val) ? '-' : parseInt(val);
         } else {
           rowsByTime[timeGroupKey][row.tag_id] = isNaN(val) ? '-' : val.toFixed(2);

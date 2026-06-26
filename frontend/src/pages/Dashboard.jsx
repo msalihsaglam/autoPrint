@@ -80,7 +80,7 @@ export const Dashboard = () => {
                   <div className={`tag-value ${getValueColor(tag.success)}`} style={{ marginBottom: 0 }}>
                     <div className="value-number">
                       {typeof tag.value === 'number' ? (
-                        (tag.id === 'TANK_SIVI_SEVIYESI' || tag.id === 'ILETKENLIK_DEGERI') ? parseInt(tag.value) : tag.value.toFixed(2)
+                        tag.id === 'TANK_SIVI_SEVIYESI' ? parseInt(tag.value) : tag.value.toFixed(2)
                       ) : tag.value}
                     </div>
                     {/* 🎯 Birim font boyutu 14px'den 18px'e yükseltildi */}

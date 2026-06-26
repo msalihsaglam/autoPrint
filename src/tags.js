@@ -5,7 +5,7 @@ const tags = [
   { id: 'TANK_SICAKLIGI', name: 'Tank Sıcaklığı', type: 'real', address: 'DB2,REAL2', unit: '°C' },
   { id: 'TANK_BASINCI', name: 'Tank Basıncı', type: 'real', address: 'DB2,REAL6', unit: 'bar' },
   { id: 'TANK_SIVI_SEVIYESI', name: 'Tank Sıvı Seviyesi', type: 'int', address: 'DB2,INT10', unit: '%' },
-  { id: 'ILETKENLIK_DEGERI', name: 'İletkenlik Değeri', type: 'int', address: 'DB2,INT12', unit: 'µS/cm' }
+  { id: 'ILETKENLIK_DEGERI', name: 'İletkenlik Değeri', type: 'real', address: 'DB2,REAL12', unit: 'µS/cm' }
 ];
 
 // Sistemi kontrol eden tetikleyici merker sinyali

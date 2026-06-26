@@ -20,7 +20,7 @@ class TagReader {
       { id: 'TANK_SICAKLIGI', name: 'Tank Sıcaklığı', value: values['TANK_SICAKLIGI'] !== undefined ? parseFloat(values['TANK_SICAKLIGI'].toFixed(2)) : 0, unit: '°C', success: values['TANK_SICAKLIGI'] !== undefined },
       { id: 'TANK_BASINCI', name: 'Tank Basıncı', value: values['TANK_BASINCI'] !== undefined ? parseFloat(values['TANK_BASINCI'].toFixed(2)) : 0, unit: 'bar', success: values['TANK_BASINCI'] !== undefined },
       { id: 'TANK_SIVI_SEVIYESI', name: 'Tank Sıvı Seviyesi', value: values['TANK_SIVI_SEVIYESI'] !== undefined ? parseInt(values['TANK_SIVI_SEVIYESI']) : 0, unit: '%', success: values['TANK_SIVI_SEVIYESI'] !== undefined },
-      { id: 'ILETKENLIK_DEGERI', name: 'İletkenlik Değeri', value: values['ILETKENLIK_DEGERI'] !== undefined ? parseInt(values['ILETKENLIK_DEGERI']) : 0, unit: 'µS/cm', success: values['ILETKENLIK_DEGERI'] !== undefined }
+      { id: 'ILETKENLIK_DEGERI', name: 'İletkenlik Değeri', value: values['ILETKENLIK_DEGERI'] !== undefined ? parseFloat(values['ILETKENLIK_DEGERI'].toFixed(2)) : 0, unit: 'µS/cm', success: values['ILETKENLIK_DEGERI'] !== undefined }
     ];
 
     return {
