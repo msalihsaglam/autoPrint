@@ -53,7 +53,7 @@ export const TrendChart = ({ tagId = null }) => {
       
       // Gelen paketteki etiketleri süzüp grafik formatına dönüştür
       const newReadings = lastReading.tags
-        .filter(tag => tag.id !== 'START_MEM')
+        .filter(tag => tag.id !== 'START_MEM' && tag.id !== 'WFI_SICAKLIGI' && tag.id !== 'URETIM_ADEDI')
         .map(tag => ({
           tag_id: tag.id,
           tag_name: tag.name,
@@ -100,8 +100,7 @@ export const TrendChart = ({ tagId = null }) => {
     'TANK_SICAKLIGI': '#ef4444',     
     'TANK_BASINCI': '#3b82f6',       
     'TANK_SIVI_SEVIYESI': '#10b981',  
-    'ILETKENLIK_DEGERI': '#f59e0b',   
-    'WFI_SICAKLIGI': '#8b5cf6'       
+    'ILETKENLIK_DEGERI': '#f59e0b'
   };
 
   const datasets = uniqueTagIds.map(id => {
