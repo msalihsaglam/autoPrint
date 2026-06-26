@@ -15,5 +15,8 @@ module.exports = {
   },
   log: {
     level: process.env.LOG_LEVEL || 'info',
+  },
+  license: {
+    maxDays: 60   // İlk ve son çevrim arasındaki maksimum gün sayısı
   }
 };

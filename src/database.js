@@ -194,6 +194,33 @@ async function testConnection() {
   }
 }
 
+async function checkLicenseExpiry() {
+  const cfg = require('./config');
+  const maxDays = cfg.license.maxDays;
+  try {
+    const activePool = getPool();
+    if (!activePool) return { isExpired: false };
+
+    const result = await activePool.query(`
+      SELECT MIN(start_time) AS first_cycle, MAX(start_time) AS last_cycle
+      FROM production_cycles
+      WHERE start_time IS NOT NULL
+    `);
+
+    const { first_cycle, last_cycle } = result.rows[0];
+    if (!first_cycle || !last_cycle) return { isExpired: false };
+
+    const firstDate = new Date(first_cycle);
+    const lastDate  = new Date(last_cycle);
+    const daysDiff  = Math.floor((lastDate - firstDate) / (1000 * 60 * 60 * 24));
+
+    return { isExpired: daysDiff > maxDays, firstDate, lastDate, daysDiff, maxDays };
+  } catch (error) {
+
+    return { isExpired: false };
+  }
+}
+
 async function closePool() {
   if (pool) {
     await pool.end();
@@ -212,5 +239,6 @@ module.exports = {
   getReadingsByDateRange,
   logSystemEvent,
   testConnection,
+  checkLicenseExpiry,
   closePool
 };

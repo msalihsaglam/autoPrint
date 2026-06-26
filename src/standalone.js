@@ -42,7 +42,7 @@ const Scheduler = require('./scheduler');
 const APIServer = require('./apiServer');
 const config = require('./config');
 const database = require('./database');
-const { initializePool, testConnection, saveTagReadings, getPool } = database;
+const { initializePool, testConnection, saveTagReadings, getPool, checkLicenseExpiry } = database;
 
 const fs = require('fs');
 const path = require('path');
@@ -157,6 +157,10 @@ class PLCSystem {
     }
 
     // 3. PLC bağlantısı opsiyonel - başarısız olsa bile API sunucusu çalışmaya devam eder
+    const preCheck = this.buildPreCheck();
+    const canConnect = await preCheck();
+    if (!canConnect) return;
+
     try {
       console.log('🔌 S7-1200 PLC bağlantısı kuruluyor...');
       await this.connection.connect();
@@ -166,8 +170,22 @@ class PLCSystem {
       console.log('✅ PLC bağlantısı başarılı. Okuma görevleri başlatıldı.');
     } catch (error) {
       console.warn('⚠️  İlk PLC bağlantısı başarısız:', error.message);
-      this.connection.startAutoReconnect(() => this.onPLCReconnected());
+      this.connection.startAutoReconnect(() => this.onPLCReconnected(), this.buildPreCheck());
     }
+  }
+
+  buildPreCheck() {
+    return async () => {
+      try {
+        const result = await checkLicenseExpiry();
+        if (result.isExpired) {
+          return false;
+        }
+        return true;
+      } catch (e) {
+        return true;
+      }
+    };
   }
 
   onPLCReconnected() {

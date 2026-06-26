@@ -51,13 +51,26 @@ class PLCConnection {
     }
   }
 
-  startAutoReconnect(onReconnected) {
+  startAutoReconnect(onReconnected, preCheck = null) {
     if (this.isReconnecting) return;
     this.isReconnecting = true;
     console.log(`🔄 Otomatik yeniden bağlanma başlatıldı. Her ${this.RECONNECT_INTERVAL_MS / 1000} saniyede bir deneniyor...`);
 
     const attempt = async () => {
       if (!this.isReconnecting) return;
+
+      if (preCheck) {
+        const canConnect = await preCheck();
+        if (!canConnect) {
+          this.isReconnecting = false;
+          if (this.reconnectTimer) {
+            clearInterval(this.reconnectTimer);
+            this.reconnectTimer = null;
+          }
+          return;
+        }
+      }
+
       console.log('🔌 PLC bağlantısı yeniden kuruluyor...');
       try {
         await this.connect();
