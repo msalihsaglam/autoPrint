@@ -3,7 +3,7 @@ require('dotenv').config();
 
 module.exports = {
   plc: {
-    host: process.env.PLC_HOST || '192.168.0.1',
+    host: process.env.PLC_HOST || '10.0.10.20',
     rack: parseInt(process.env.PLC_RACK || '0'),
     slot: parseInt(process.env.PLC_SLOT || '1'),
     timeout: parseInt(process.env.PLC_TIMEOUT || '5000'),
