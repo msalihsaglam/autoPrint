@@ -72,7 +72,7 @@ class PLCSystem {
 
   initClientItems() {
     const client = this.connection.getClient();
-    client.addItems(['START_MEM', 'TANK_SICAKLIGI', 'TANK_BASINCI', 'TANK_SIVI_SEVIYESI', 'ILETKENLIK_DEGERI', 'WFI_SICAKLIGI']);
+    client.addItems(['START_MEM', 'TANK_SICAKLIGI', 'TANK_BASINCI', 'TANK_SIVI_SEVIYESI', 'ILETKENLIK_DEGERI']);
 
     client.setTranslationCB((tag) => {
       const addressMap = {
@@ -80,8 +80,7 @@ class PLCSystem {
         'TANK_SICAKLIGI': 'DB2,REAL2',
         'TANK_BASINCI': 'DB2,REAL6',
         'TANK_SIVI_SEVIYESI': 'DB2,INT10',
-        'ILETKENLIK_DEGERI': 'DB2,REAL12',
-        'WFI_SICAKLIGI': 'DB2,INT16'
+        'ILETKENLIK_DEGERI': 'DB2,INT12'
       };
       return addressMap[tag];
     });
@@ -235,11 +234,11 @@ class PLCSystem {
         const timeGroupKey = `${dateStr} ${timeStr}`;
         
         if (!rowsByTime[timeGroupKey]) {
-          rowsByTime[timeGroupKey] = { time: timeGroupKey, rawTime: dateObj.getTime(), TANK_SICAKLIGI: '-', TANK_BASINCI: '-', TANK_SIVI_SEVIYESI: '-', ILETKENLIK_DEGERI: '-', WFI_SICAKLIGI: '-' };
+          rowsByTime[timeGroupKey] = { time: timeGroupKey, rawTime: dateObj.getTime(), TANK_SICAKLIGI: '-', TANK_BASINCI: '-', TANK_SIVI_SEVIYESI: '-', ILETKENLIK_DEGERI: '-' };
         }
         
         let val = parseFloat(row.value);
-        if (row.tag_id === 'TANK_SIVI_SEVIYESI' || row.tag_id === 'WFI_SICAKLIGI') {
+        if (row.tag_id === 'TANK_SIVI_SEVIYESI' || row.tag_id === 'ILETKENLIK_DEGERI') {
           rowsByTime[timeGroupKey][row.tag_id] = isNaN(val) ? '-' : parseInt(val);
         } else {
           rowsByTime[timeGroupKey][row.tag_id] = isNaN(val) ? '-' : val.toFixed(2);
@@ -261,7 +260,7 @@ class PLCSystem {
       doc.moveDown(1);
 
       const startX = 30;
-      const colX = { time: startX, temp: startX + 105, press: startX + 191, level: startX + 277, cond: startX + 363, wfi: startX + 449 };
+      const colX = { time: startX, temp: startX + 105, press: startX + 212, level: startX + 319, cond: startX + 427 };
       let currentY = doc.y;
 
       doc.rect(startX, currentY, 535, 22).fill('#2563eb'); 
@@ -271,7 +270,6 @@ class PLCSystem {
       doc.text('TANK BASINC', colX.press + 5, currentY + 7);
       doc.text('SIVI SEVIYESI', colX.level + 5, currentY + 7);
       doc.text('ILETKENLIK', colX.cond + 5, currentY + 7);
-      doc.text('WFI SICAKLIK', colX.wfi + 5, currentY + 7);
       currentY += 22;
 
       doc.fillColor('#111827').font('Helvetica').fontSize(8.5);
@@ -293,7 +291,6 @@ class PLCSystem {
         doc.text(String(row.TANK_BASINCI), colX.press + 5, currentY + 5);
         doc.text(String(row.TANK_SIVI_SEVIYESI), colX.level + 5, currentY + 5);
         doc.text(String(row.ILETKENLIK_DEGERI), colX.cond + 5, currentY + 5);
-        doc.text(String(row.WFI_SICAKLIGI), colX.wfi + 5, currentY + 5);
 
         doc.moveTo(startX, currentY + 18).lineTo(startX + 535, currentY + 18).stroke('#e5e7eb');
         currentY += 18; 

@@ -2,19 +2,18 @@
 
 // PLC'den okunacak ana 5 tag şablonu (nodes7 adres yapısına uygun format)
 const tags = [
-  { id: 'TANK_SICAKLIGI', name: 'Tank Sıcaklığı', type: 'real', address: 'DB1,REAL0', unit: '°C' },
-  { id: 'TANK_BASINCI', name: 'Tank Basıncı', type: 'real', address: 'DB1,REAL4', unit: 'bar' },
-  { id: 'TANK_SIVI_SEVIYESI', name: 'Tank Sıvı Seviyesi', type: 'int', address: 'DB1,INT8', unit: '%' },
-  { id: 'URETIM_ADEDI', name: 'Üretim Adedi', type: 'dint', address: 'DB1,DINT10', unit: 'Adet' },
-  { id: 'ILETKENLIK_DEGERI', name: 'İletkenlik Değeri', type: 'int', address: 'DB1,INT14', unit: 'µS/cm' }
+  { id: 'TANK_SICAKLIGI', name: 'Tank Sıcaklığı', type: 'real', address: 'DB2,REAL2', unit: '°C' },
+  { id: 'TANK_BASINCI', name: 'Tank Basıncı', type: 'real', address: 'DB2,REAL6', unit: 'bar' },
+  { id: 'TANK_SIVI_SEVIYESI', name: 'Tank Sıvı Seviyesi', type: 'int', address: 'DB2,INT10', unit: '%' },
+  { id: 'ILETKENLIK_DEGERI', name: 'İletkenlik Değeri', type: 'int', address: 'DB2,INT12', unit: 'µS/cm' }
 ];
 
-// Sistemi kontrol eden tetikleyici merker sinyali (%M0.5)
+// Sistemi kontrol eden tetikleyici merker sinyali
 const controlTag = {
   id: 'START_MEM',
   name: 'Sistem Başlat Merkeri',
   type: 'bool',
-  address: 'M0.5',
+  address: 'DB2,X0.0',
   unit: ''
 };
 
