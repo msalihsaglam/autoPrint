@@ -42,31 +42,49 @@ class PLCSystem {
       initializePool();
       await testConnection();
 
-      console.log('🔌 S7-1200 PLC bağlantısı kuruluyor...');
-      await this.connection.connect();
-      this.isRunning = true;
-      
-      const client = this.connection.getClient();
-      client.addItems(['START_MEM', 'TANK_SICAKLIGI', 'TANK_BASINCI', 'TANK_SIVI_SEVIYESI', 'ILETKENLIK_DEGERI', 'WFI_SICAKLIGI']);
-
-      client.setTranslationCB((tag) => {
-        const addressMap = {
-          'START_MEM': 'DB2,X0.0',
-          'TANK_SICAKLIGI': 'DB2,REAL2',
-          'TANK_BASINCI': 'DB2,REAL6',
-          'TANK_SIVI_SEVIYESI': 'DB2,INT10',
-          'ILETKENLIK_DEGERI': 'DB2,REAL12',
-          'WFI_SICAKLIGI': 'DB2,INT16'
-        };
-        return addressMap[tag];
-      });
-      
-      this.setupReadingTasks();
+      // API sunucusunu hemen başlat (PLC bağlantısından bağımsız)
       this.startAPIServer();
+
+      console.log('🔌 S7-1200 PLC bağlantısı kuruluyor...');
+      try {
+        await this.connection.connect();
+        this.isRunning = true;
+        this.initClientItems();
+        this.setupReadingTasks();
+      } catch (error) {
+        console.error('❌ İlk PLC bağlantısı başarısız:', error.message);
+        this.connection.startAutoReconnect(() => this.onPLCReconnected());
+      }
     } catch (error) {
       console.error('❌ Hata:', error.message);
       this.stop();
     }
+  }
+
+  onPLCReconnected() {
+    this.isRunning = true;
+    this.initClientItems();
+    // Scheduler görevi yoksa ekle (ilk bağlantıda eklenmemiş olabilir)
+    if (!this.scheduler.intervals.has('db2-block-monitor')) {
+      this.setupReadingTasks();
+    }
+  }
+
+  initClientItems() {
+    const client = this.connection.getClient();
+    client.addItems(['START_MEM', 'TANK_SICAKLIGI', 'TANK_BASINCI', 'TANK_SIVI_SEVIYESI', 'ILETKENLIK_DEGERI', 'WFI_SICAKLIGI']);
+
+    client.setTranslationCB((tag) => {
+      const addressMap = {
+        'START_MEM': 'DB2,X0.0',
+        'TANK_SICAKLIGI': 'DB2,REAL2',
+        'TANK_BASINCI': 'DB2,REAL6',
+        'TANK_SIVI_SEVIYESI': 'DB2,INT10',
+        'ILETKENLIK_DEGERI': 'DB2,REAL12',
+        'WFI_SICAKLIGI': 'DB2,INT16'
+      };
+      return addressMap[tag];
+    });
   }
 
   startAPIServer() {
@@ -79,11 +97,25 @@ class PLCSystem {
   }
 
   async scanPLCDataBlock() {
-    if (!this.connection.isConnected) return;
+    if (!this.connection.isConnected) {
+      if (!this.connection.isReconnecting) {
+        console.log('🔴 PLC bağlantısı yok. Yeniden bağlanma başlatılıyor...');
+        this.connection.startAutoReconnect(() => this.onPLCReconnected());
+      }
+      return;
+    }
     const client = this.connection.getClient();
 
     client.readAllItems(async (err, values) => {
-      if (err) return;
+      if (err) {
+        console.error('❌ PLC okuma hatası:', err.message);
+        this.connection.isConnected = false;
+        if (!this.connection.isReconnecting) {
+          console.log('🔴 Bağlantı koptu. Yeniden bağlanma başlatılıyor...');
+          this.connection.startAutoReconnect(() => this.onPLCReconnected());
+        }
+        return;
+      }
 
       try {
         const plcPayload = this.tagReader.processPLCVals(values);

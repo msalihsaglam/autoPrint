@@ -10,9 +10,14 @@ class PLCConnection {
     this.maxRetries = 3;
     this.retryDelay = 2000;
     this.realPLC = true;
+    this.reconnectTimer = null;
+    this.isReconnecting = false;
+    this.RECONNECT_INTERVAL_MS = 10000;
   }
 
   async connect() {
+    // Her bağlantı denemesinde temiz bir nodes7 instance oluştur
+    this.client = new nodes7();
     try {
       return new Promise((resolve, reject) => {
         const connectionTimeout = setTimeout(() => {
@@ -46,8 +51,44 @@ class PLCConnection {
     }
   }
 
+  startAutoReconnect(onReconnected) {
+    if (this.isReconnecting) return;
+    this.isReconnecting = true;
+    console.log(`🔄 Otomatik yeniden bağlanma başlatıldı. Her ${this.RECONNECT_INTERVAL_MS / 1000} saniyede bir deneniyor...`);
+
+    const attempt = async () => {
+      if (!this.isReconnecting) return;
+      console.log('🔌 PLC bağlantısı yeniden kuruluyor...');
+      try {
+        await this.connect();
+        this.isReconnecting = false;
+        if (this.reconnectTimer) {
+          clearInterval(this.reconnectTimer);
+          this.reconnectTimer = null;
+        }
+        console.log('🟢 Yeniden bağlantı başarılı!');
+        if (onReconnected) onReconnected();
+      } catch (err) {
+        console.log(`⏳ Bağlantı başarısız, ${this.RECONNECT_INTERVAL_MS / 1000} saniye sonra tekrar denenecek...`);
+      }
+    };
+
+    // Hemen bir kez dene, sonra periyodik olarak tekrar et
+    attempt();
+    this.reconnectTimer = setInterval(attempt, this.RECONNECT_INTERVAL_MS);
+  }
+
+  stopAutoReconnect() {
+    this.isReconnecting = false;
+    if (this.reconnectTimer) {
+      clearInterval(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
   disconnect() {
     try {
+      this.stopAutoReconnect();
       if (this.isConnected) {
         this.client.dropConnection();
         this.isConnected = false;
@@ -84,7 +125,8 @@ class PLCConnection {
       port: 102,
       clientType: 'nodes7 (S7-1200)',
       realPLC: this.realPLC,
-      connectionAttempts: this.connectionAttempts
+      connectionAttempts: this.connectionAttempts,
+      isReconnecting: this.isReconnecting
     };
   }
 }
