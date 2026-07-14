@@ -1,0 +1,7 @@
+# Kullanmak istediğiniz yazıcının TAM ADINI aşağıya yazın (Windows'ta
+# "Ayarlar > Yazıcılar ve tarayıcılar" bölümünde görünen isimle birebir aynı olmalı).
+# Örnek:
+# HP LaserJet Pro MFP M126
+#
+# Bu dosya boş bırakılırsa veya silinirse sistemin varsayılan (default) yazıcısı kullanılır.
+# '#' ile başlayan satırlar yorum satırıdır ve dikkate alınmaz.

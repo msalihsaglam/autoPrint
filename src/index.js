@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
 const ptp = require('pdf-to-printer'); 
+const { getPrinterName } = require('./printerConfig');
 
 const READING_INTERVALS = {
   START_MEM_CHECK: 20 * 1000,       
@@ -316,7 +317,10 @@ class PLCSystem {
 
       doc.end();
       writeStream.on('finish', async () => {
-        try { await ptp.print(filePath); } catch (e) { console.error('Yazıcı hatası:', e.message); }
+        try {
+          const printerName = getPrinterName();
+          await ptp.print(filePath, printerName ? { printer: printerName } : undefined);
+        } catch (e) { console.error('Yazıcı hatası:', e.message); }
       });
     } catch (err) {
       console.error('Rapor basım hatası:', err.message);

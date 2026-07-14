@@ -89,6 +89,12 @@ if %errorlevel% neq 0 (
 )
 echo SumatraPDF kopyalandi.
 
+echo printer.txt yazici ayar dosyasi kopyalaniyor...
+if not exist "%ROOT_DIR%dist\printer.txt" (
+    copy /Y "%ROOT_DIR%printer.txt" "%ROOT_DIR%dist\printer.txt" > nul
+)
+echo printer.txt hazir.
+
 :: -------- ADIM 6: EXE oluştur --------
 echo.
 echo [6/6] EXE olusturuluyor (bu biraz zaman alabilir)...
@@ -109,6 +115,7 @@ echo   dist\autoprint.exe   - Calistirilabilir uygulama
 echo   dist\public\         - Frontend dosyalari (exe yaninda olmali)
 echo   dist\pdfkit-data\    - PDF font dosyalari (exe yaninda olmali)
 echo   dist\sumatra\        - SumatraPDF yazici motoru (exe yaninda olmali)
+echo   dist\printer.txt     - Yazici adi ayar dosyasi (exe yaninda olmali)
 echo.
 echo Calistirmak icin:
 echo   dist\autoprint.exe
@@ -116,8 +123,10 @@ echo.
 echo Tarayicide acin:
 echo   http://localhost:3001
 echo.
-echo NOT: dist\ klasorunu tasimayin. autoprint.exe, public\, pdfkit-data\
-echo      ve sumatra\ klasorleri her zaman ayni dizinde olmalidir.
+echo NOT: dist\ klasorunu tasimayin. autoprint.exe, public\, pdfkit-data\,
+echo      sumatra\ ve printer.txt her zaman ayni dizinde olmalidir.
+echo      Belirli bir yaziciya basmak icin dist\printer.txt dosyasina
+echo      yazicinin tam adini yazin (bos birakilirsa varsayilan yazici kullanilir).
 echo.
 goto :end
 

@@ -73,12 +73,14 @@ if (process.pkg) {
 
 const PDFDocument = require('pdfkit');
 const { spawn }   = require('child_process');
+const { getPrinterName } = require('./printerConfig');
 
 // ─── pkg SumatraPDF Yazıcı Fonksiyonu ────────────────────────────────────────
 // pkg ile paketlendiğinde SumatraPDF snapshot'tan spawn edilemez.
 // EXE yanındaki sumatra/ klasöründen çalıştırıyoruz.
 function printFile(pdfPath) {
   return new Promise((resolve, reject) => {
+    const printerName = getPrinterName();
     let sumatraExe;
 
     if (process.pkg) {
@@ -93,22 +95,27 @@ function printFile(pdfPath) {
       } catch (e) {
         return reject(new Error(`sumatra/ klasörü okunamadı: ${e.message}`));
       }
-    } else {
-      // Normal Node.js modunda pdf-to-printer'ı kullan
-      try {
-        const ptp = require('pdf-to-printer');
-        return ptp.print(pdfPath).then(resolve).catch(reject);
-      } catch (e) {
-        return reject(new Error('pdf-to-printer yüklenemedi: ' + e.message));
-      }
+
+      const printArgs = printerName
+        ? ['-print-to', printerName, '-silent', pdfPath]
+        : ['-print-to-default', '-silent', pdfPath];
+
+      const child = spawn(sumatraExe, printArgs, { detached: true });
+      child.on('error', reject);
+      child.on('close', (code) => {
+        if (code === 0 || code === null) resolve();
+        else reject(new Error(`SumatraPDF çıkış kodu: ${code}`));
+      });
+      return;
     }
 
-    const child = spawn(sumatraExe, ['-print-to-default', '-silent', pdfPath], { detached: true });
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code === 0 || code === null) resolve();
-      else reject(new Error(`SumatraPDF çıkış kodu: ${code}`));
-    });
+    // Normal Node.js modunda pdf-to-printer'ı kullan
+    try {
+      const ptp = require('pdf-to-printer');
+      return ptp.print(pdfPath, printerName ? { printer: printerName } : undefined).then(resolve).catch(reject);
+    } catch (e) {
+      return reject(new Error('pdf-to-printer yüklenemedi: ' + e.message));
+    }
   });
 }
 // ─────────────────────────────────────────────────────────────────────────────
